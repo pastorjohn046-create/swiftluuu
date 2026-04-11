@@ -29,6 +29,7 @@ import {
   Landmark,
   Bitcoin,
   Coins,
+  RefreshCw,
   CreditCard as CardIcon,
   Lock,
   Fingerprint,
@@ -104,7 +105,31 @@ export default function App() {
       setView('dashboard');
     }
 
-    return () => clearTimeout(timer);
+    // Polling for live updates (Railway/Full-stack mode)
+    const pollInterval = setInterval(() => {
+      const currentUser = JSON.parse(localStorage.getItem('nexus_user') || 'null');
+      if (currentUser) {
+        fetchData(currentUser.uid);
+      }
+    }, 10000); // Poll every 10 seconds
+
+    // Storage sync for Netlify/Static mode
+    const handleStorageChange = (e: StorageEvent) => {
+      if (e.key?.startsWith('nexus_local_') || e.key === 'nexus_user') {
+        const currentUser = JSON.parse(localStorage.getItem('nexus_user') || 'null');
+        if (currentUser) {
+          setUser(currentUser);
+          fetchData(currentUser.uid);
+        }
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+
+    return () => {
+      clearTimeout(timer);
+      clearInterval(pollInterval);
+      window.removeEventListener('storage', handleStorageChange);
+    };
   }, []);
 
   useEffect(() => {
@@ -117,13 +142,14 @@ export default function App() {
 
   const fetchData = async (uid: string) => {
     try {
-      const [txRes, usersRes, msgRes, pmRes, invRes, wdRes] = await Promise.all([
+      const [txRes, usersRes, msgRes, pmRes, invRes, wdRes, userRes] = await Promise.all([
         axios.get(`/api/transactions/${uid}`),
         axios.get('/api/users'),
         axios.get('/api/support/messages'),
         axios.get('/api/payment-methods'),
         axios.get(`/api/investments/${uid}`),
-        axios.get('/api/admin/withdrawals')
+        axios.get('/api/admin/withdrawals'),
+        axios.get(`/api/user/${uid}`)
       ]);
       setTransactions(txRes.data);
       setAllUsers(usersRes.data.filter((u: any) => u.uid !== uid));
@@ -131,11 +157,34 @@ export default function App() {
       setPaymentMethods(pmRes.data);
       setUserInvestment(invRes.data);
       setWithdrawalRequests(wdRes.data);
+      
+      // Update current user state to reflect balance changes from admin
+      if (userRes.data) {
+        setUser(userRes.data);
+        localStorage.setItem('nexus_user', JSON.stringify(userRes.data));
+      }
     } catch (err: any) {
       console.error("Fetch error:", err);
       // Fallback for static/offline mode
       if (!err.response || err.response.status === 404) {
-        const localUsers = JSON.parse(localStorage.getItem('nexus_local_users') || '[]');
+        let localUsers = JSON.parse(localStorage.getItem('nexus_local_users') || '[]');
+        
+        // Ensure default admin exists in local store
+        if (!localUsers.find((u: any) => u.email === 'demo@nexus.bank')) {
+          const admin = {
+            uid: 'admin-001',
+            email: 'demo@nexus.bank',
+            displayName: 'System Admin',
+            photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=admin',
+            balance: 10000.00,
+            createdAt: new Date().toISOString(),
+            theme: 'light',
+            role: 'admin'
+          };
+          localUsers.push(admin);
+          localStorage.setItem('nexus_local_users', JSON.stringify(localUsers));
+        }
+
         setAllUsers(localUsers.filter((u: any) => u.uid !== uid));
         
         const localTxs = JSON.parse(localStorage.getItem('nexus_local_transactions') || '[]');
@@ -212,6 +261,7 @@ export default function App() {
           setUser(found);
           setIsDarkMode(found.theme === 'dark');
           localStorage.setItem('nexus_user', JSON.stringify(found));
+          await fetchData(found.uid);
           setView('dashboard');
           return;
         }
@@ -256,6 +306,7 @@ export default function App() {
         localStorage.setItem('nexus_local_users', JSON.stringify(localUsers));
         setUser(newUser);
         localStorage.setItem('nexus_user', JSON.stringify(newUser));
+        await fetchData(newUser.uid);
         setView('dashboard');
         return;
       }
@@ -1622,7 +1673,19 @@ export default function App() {
 
         {adminActiveTab === 'users' && (
           <section className="space-y-4">
-            <h4 className="font-bold text-zinc-900 dark:text-zinc-100">User Management</h4>
+            <div className="flex items-center justify-between">
+              <h4 className="font-bold text-zinc-900 dark:text-zinc-100">User Management</h4>
+              <Button size="sm" variant="ghost" className="text-[10px] h-7" onClick={() => fetchData(user!.uid)}>
+                <RefreshCw className="w-3 h-3 mr-1" /> Sync Data
+              </Button>
+            </div>
+            
+            <div className="p-4 bg-blue-50 dark:bg-blue-900/10 rounded-2xl border border-blue-100 dark:border-blue-900/20 mb-4">
+              <p className="text-[10px] text-blue-700 dark:text-blue-400 leading-relaxed">
+                <strong>Note:</strong> In static mode (Netlify), data is stored in your browser's local storage. To see changes across tabs, use the "Sync Data" button or open the app in a new tab of the same browser.
+              </p>
+            </div>
+
             <div className="space-y-3">
               {[user, ...allUsers].filter(Boolean).map((u) => (
                 <Card key={u?.uid} className="p-4 bg-white dark:bg-zinc-900 shadow-sm">
