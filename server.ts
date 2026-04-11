@@ -274,6 +274,13 @@ async function startServer() {
     res.json(userTxs);
   });
 
+  app.delete("/api/transactions/:uid", (req, res) => {
+    const { uid } = req.params;
+    db.transactions = db.transactions.filter(t => t.fromUid !== uid && t.toUid !== uid);
+    saveDB();
+    res.json({ success: true });
+  });
+
   // Investment & Withdrawal Routes
   app.get("/api/investments/:uid", (req, res) => {
     const { uid } = req.params;

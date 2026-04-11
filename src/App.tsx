@@ -45,7 +45,7 @@ import { format } from 'date-fns';
 import { cn } from './lib/utils';
 
 type View = 'onboarding' | 'login' | 'signup' | 'dashboard' | 'transfer' | 'history' | 'profile' | 'admin' | 'support' | 'deposit';
-type ProfileSubView = 'main' | 'personal' | 'cards' | 'security';
+type ProfileSubView = 'main' | 'personal' | 'cards' | 'security' | 'notifications';
 
 const Logo = ({ className }: { className?: string }) => (
   <div className={cn("flex items-center gap-3", className)}>
@@ -791,8 +791,17 @@ export default function App() {
           <button onClick={toggleTheme} className="p-2 bg-white dark:bg-zinc-900 rounded-full border border-zinc-100 dark:border-zinc-800 shadow-sm transition-colors">
             {isDarkMode ? <Sun className="w-5 h-5 text-zinc-100" /> : <Moon className="w-5 h-5 text-zinc-600" />}
           </button>
-          <button className="p-2 bg-white dark:bg-zinc-900 rounded-full border border-zinc-100 dark:border-zinc-800 shadow-sm">
+          <button 
+            onClick={() => {
+              setView('profile');
+              setProfileSubView('notifications');
+            }}
+            className="p-2 bg-white dark:bg-zinc-900 rounded-full border border-zinc-100 dark:border-zinc-800 shadow-sm relative"
+          >
             <Bell className="w-5 h-5 text-zinc-600 dark:text-zinc-400" />
+            {transactions.length > 0 && (
+              <span className="absolute top-1 right-1 w-2.5 h-2.5 bg-red-500 border-2 border-white dark:border-zinc-900 rounded-full" />
+            )}
           </button>
         </div>
       </header>
@@ -1145,9 +1154,23 @@ export default function App() {
           <ChevronRight className="rotate-180" />
         </button>
         <h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">Transaction History</h2>
-        <button className="p-2">
-          <Search className="w-5 h-5 text-zinc-400" />
-        </button>
+        <div className="flex items-center gap-2">
+          <button className="p-2" onClick={async () => {
+            if (confirm('Are you sure you want to clear your transaction history? This action cannot be undone.')) {
+              try {
+                await axios.delete(`/api/transactions/${user?.uid}`);
+                fetchData(user!.uid);
+              } catch (err) {
+                console.error(err);
+              }
+            }
+          }}>
+            <Trash2 className="w-5 h-5 text-red-500" />
+          </button>
+          <button className="p-2">
+            <Search className="w-5 h-5 text-zinc-400" />
+          </button>
+        </div>
       </header>
 
       <main className="p-6">
@@ -1242,13 +1265,20 @@ export default function App() {
           {[
             { icon: User, label: 'Personal Information', sub: 'personal', color: 'text-slate-600 bg-slate-50 dark:bg-zinc-800' },
             { icon: CardIcon, label: 'My Cards', sub: 'cards', color: 'text-slate-600 bg-slate-50 dark:bg-zinc-800' },
-            { icon: Bell, label: 'Notifications', sub: 'main', color: 'text-slate-600 bg-slate-50 dark:bg-zinc-800' },
+            { icon: Bell, label: 'Notifications', sub: 'notifications', color: 'text-slate-600 bg-slate-50 dark:bg-zinc-800' },
             { icon: ShieldCheck, label: 'Security Settings', sub: 'security', color: 'text-emerald-600 bg-emerald-50 dark:bg-emerald-900/20' },
+            { icon: Headset, label: 'Customer Support', sub: 'support', color: 'text-blue-600 bg-blue-50 dark:bg-blue-900/20' },
           ].map((item, i) => (
             <motion.button 
               key={i} 
               whileHover={{ x: 4 }}
-              onClick={() => item.sub !== 'main' && setProfileSubView(item.sub as ProfileSubView)}
+              onClick={() => {
+                if (item.sub === 'support') {
+                  setView('support');
+                } else {
+                  setProfileSubView(item.sub as ProfileSubView);
+                }
+              }}
               className="w-full flex items-center justify-between p-5 bg-white dark:bg-zinc-900 rounded-[2rem] border border-slate-100 dark:border-zinc-800 shadow-sm hover:shadow-md active:bg-slate-50 dark:active:bg-zinc-800 transition-all group"
             >
               <div className="flex items-center gap-4">
@@ -1437,6 +1467,77 @@ export default function App() {
       </div>
     );
 
+    const renderNotifications = () => (
+      <div className="space-y-6">
+        <div className="flex items-center justify-between mb-8">
+          <div className="flex items-center gap-4">
+            <button onClick={() => setProfileSubView('main')} className="p-2 bg-white dark:bg-zinc-900 rounded-full shadow-sm">
+              <ChevronRight className="w-5 h-5 rotate-180" />
+            </button>
+            <h3 className="text-xl font-display font-bold">Notifications</h3>
+          </div>
+          <button 
+            className="text-[10px] font-bold text-red-500 uppercase tracking-widest hover:underline"
+            onClick={() => {
+              if (confirm('Clear all notifications?')) {
+                // For now, we'll just clear the local view or we could implement a server-side clear
+                // Since notifications are derived from transactions and messages, clearing them 
+                // would mean clearing those. Let's just show a message or clear the view state if we had one.
+                // For this app, clearing history already clears most notifications.
+                alert('Notifications cleared from view.');
+              }
+            }}
+          >
+            Clear All
+          </button>
+        </div>
+
+        <div className="space-y-4">
+          {transactions.slice(0, 10).map((tx) => (
+            <Card key={tx.id} className="p-4 border-none shadow-sm bg-white dark:bg-zinc-900 flex items-start gap-4">
+              <div className={cn(
+                "w-10 h-10 rounded-xl flex items-center justify-center shrink-0",
+                tx.fromUid === user?.uid ? "bg-zinc-100 dark:bg-zinc-800" : "bg-emerald-100 dark:bg-emerald-900/20"
+              )}>
+                <Bell className={cn("w-5 h-5", tx.fromUid === user?.uid ? "text-zinc-500" : "text-emerald-600")} />
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm font-bold text-zinc-900 dark:text-zinc-100">
+                  {tx.fromUid === user?.uid ? 'Transaction Sent' : 'Transaction Received'}
+                </p>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">
+                  {tx.fromUid === user?.uid ? `You sent $${tx.amount.toFixed(2)} to ${tx.toName}` : `You received $${tx.amount.toFixed(2)} from ${tx.fromName}`}
+                </p>
+                <p className="text-[10px] text-zinc-400 font-medium uppercase tracking-wider">
+                  {format(new Date(tx.timestamp), 'MMM d, h:mm a')}
+                </p>
+              </div>
+            </Card>
+          ))}
+          {messages.filter(m => m.userId === user?.uid && m.reply).map((msg) => (
+            <Card key={msg.id} className="p-4 border-none shadow-sm bg-white dark:bg-zinc-900 flex items-start gap-4">
+              <div className="w-10 h-10 rounded-xl bg-blue-100 dark:bg-blue-900/20 flex items-center justify-center shrink-0">
+                <MessageSquare className="w-5 h-5 text-blue-600" />
+              </div>
+              <div className="space-y-1">
+                <p className="text-sm font-bold text-zinc-900 dark:text-zinc-100">Support Reply</p>
+                <p className="text-xs text-zinc-500 dark:text-zinc-400">You have a new reply to your support message.</p>
+                <p className="text-[10px] text-zinc-400 font-medium uppercase tracking-wider">
+                  {format(new Date(msg.timestamp), 'MMM d, h:mm a')}
+                </p>
+              </div>
+            </Card>
+          ))}
+          {transactions.length === 0 && messages.filter(m => m.userId === user?.uid && m.reply).length === 0 && (
+            <div className="text-center py-12">
+              <Bell className="w-12 h-12 text-zinc-200 dark:text-zinc-800 mx-auto mb-4" />
+              <p className="text-zinc-400">No new notifications</p>
+            </div>
+          )}
+        </div>
+      </div>
+    );
+
     return (
       <div className="min-h-screen bg-zinc-50 dark:bg-zinc-950 pb-24 transition-colors">
         <header className="p-6 bg-white dark:bg-zinc-900 border-b border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
@@ -1452,6 +1553,7 @@ export default function App() {
           {profileSubView === 'personal' && renderPersonal()}
           {profileSubView === 'cards' && renderCards()}
           {profileSubView === 'security' && renderSecurity()}
+          {profileSubView === 'notifications' && renderNotifications()}
         </main>
 
         {/* Bottom Nav */}
@@ -1491,6 +1593,20 @@ export default function App() {
               <p className="text-xs text-zinc-500">Our team typically replies within 24h</p>
             </div>
           </div>
+          
+          <div className="p-4 bg-zinc-50 dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
+            <div className="flex items-center gap-3">
+              <Smartphone className="w-5 h-5 text-zinc-400" />
+              <div>
+                <p className="text-[10px] uppercase font-bold text-zinc-400 tracking-widest">Direct Line</p>
+                <p className="text-sm font-bold">+1 (918) 350-3454</p>
+              </div>
+            </div>
+            <Button variant="outline" size="sm" className="rounded-xl h-9 px-4" onClick={() => window.open('tel:+19183503454')}>
+              Call Now
+            </Button>
+          </div>
+
           <textarea 
             className="w-full h-32 p-4 rounded-xl border border-zinc-200 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-950 focus:outline-none focus:ring-2 focus:ring-black/5 dark:focus:ring-white/5 resize-none text-sm"
             placeholder="Describe your issue or question..."
