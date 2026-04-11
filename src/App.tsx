@@ -153,13 +153,20 @@ export default function App() {
             assets: []
           });
         }
-        
-        // Mock some data if empty
-        if (paymentMethods.length === 0) {
-          setPaymentMethods([
+
+        const localWithdrawals = JSON.parse(localStorage.getItem('nexus_local_withdrawals') || '[]');
+        setWithdrawalRequests(localWithdrawals);
+
+        const localPMs = JSON.parse(localStorage.getItem('nexus_local_payment_methods') || '[]');
+        if (localPMs.length > 0) {
+          setPaymentMethods(localPMs);
+        } else {
+          const defaultPMs = [
             { id: 'pm-1', name: 'Bank Transfer', details: 'Vertex Capital • 1234-5678-9012', icon: 'landmark' },
             { id: 'pm-2', name: 'Crypto (USDT)', details: '0x71C7656EC7ab88b098defB751B7401B5f6d8976F', icon: 'bitcoin' }
-          ]);
+          ];
+          setPaymentMethods(defaultPMs);
+          localStorage.setItem('nexus_local_payment_methods', JSON.stringify(defaultPMs));
         }
       }
     }
@@ -197,6 +204,11 @@ export default function App() {
         
         const found = localUsers.find((u: any) => u.email === email);
         if (found) {
+          // Ensure demo email always has admin role
+          if (email === 'demo@nexus.bank' && found.role !== 'admin') {
+            found.role = 'admin';
+            localStorage.setItem('nexus_local_users', JSON.stringify(localUsers));
+          }
           setUser(found);
           setIsDarkMode(found.theme === 'dark');
           localStorage.setItem('nexus_user', JSON.stringify(found));
@@ -620,10 +632,11 @@ export default function App() {
     e.preventDefault();
     if (!user || !withdrawAmount || !withdrawMethod) return;
     setIsLoading(true);
+    const amount = parseFloat(withdrawAmount);
     try {
       await axios.post('/api/withdrawals/request', {
         uid: user.uid,
-        amount: parseFloat(withdrawAmount),
+        amount,
         method: withdrawMethod
       });
       setIsWithdrawModalOpen(false);
@@ -632,7 +645,39 @@ export default function App() {
       setIsSuccess(true);
       setTimeout(() => setIsSuccess(false), 3000);
       await fetchData(user.uid);
-    } catch (err) {
+    } catch (err: any) {
+      // Netlify/Static Fallback
+      if (!err.response || err.response.status === 404) {
+        if (user.balance < amount) {
+          setError('Insufficient balance');
+          setIsLoading(false);
+          return;
+        }
+
+        const newRequest = {
+          id: `wd-${Math.random().toString(36).substr(2, 9)}`,
+          uid: user.uid,
+          userName: user.displayName,
+          userEmail: user.email,
+          amount,
+          method: withdrawMethod,
+          status: 'pending',
+          timestamp: new Date().toISOString()
+        };
+
+        const localWithdrawals = JSON.parse(localStorage.getItem('nexus_local_withdrawals') || '[]');
+        localWithdrawals.unshift(newRequest);
+        localStorage.setItem('nexus_local_withdrawals', JSON.stringify(localWithdrawals));
+
+        setIsWithdrawModalOpen(false);
+        setWithdrawAmount('');
+        setWithdrawMethod('');
+        setIsSuccess(true);
+        setTimeout(() => setIsSuccess(false), 3000);
+        await fetchData(user.uid);
+        setIsLoading(false);
+        return;
+      }
       console.error('Withdrawal request failed:', err);
       setError('Failed to submit withdrawal request');
     } finally {
@@ -644,7 +689,35 @@ export default function App() {
     try {
       await axios.post('/api/admin/withdrawals/action', { requestId, action });
       if (user) await fetchData(user.uid);
-    } catch (err) {
+    } catch (err: any) {
+      // Netlify/Static Fallback
+      if (!err.response || err.response.status === 404) {
+        const localWithdrawals = JSON.parse(localStorage.getItem('nexus_local_withdrawals') || '[]');
+        const request = localWithdrawals.find((r: any) => r.id === requestId);
+        
+        if (request && request.status === 'pending') {
+          request.status = action === 'approve' ? 'approved' : 'rejected';
+          
+          if (action === 'approve') {
+            const localUsers = JSON.parse(localStorage.getItem('nexus_local_users') || '[]');
+            const targetUser = localUsers.find((u: any) => u.uid === request.uid);
+            if (targetUser) {
+              targetUser.balance -= request.amount;
+              localStorage.setItem('nexus_local_users', JSON.stringify(localUsers));
+              
+              // Update current user if they are the one being approved
+              if (user && user.uid === targetUser.uid) {
+                const updatedUser = { ...user, balance: targetUser.balance };
+                setUser(updatedUser);
+                localStorage.setItem('nexus_user', JSON.stringify(updatedUser));
+              }
+            }
+          }
+          
+          localStorage.setItem('nexus_local_withdrawals', JSON.stringify(localWithdrawals));
+          if (user) await fetchData(user.uid);
+        }
+      }
       console.error('Admin withdrawal action failed:', err);
     }
   };
@@ -1767,7 +1840,16 @@ export default function App() {
                 <Button 
                   className="w-full h-10 text-xs"
                   onClick={async () => {
-                    await axios.post('/api/admin/payment-methods', newPaymentMethod);
+                    try {
+                      await axios.post('/api/admin/payment-methods', newPaymentMethod);
+                    } catch (err: any) {
+                      if (!err.response || err.response.status === 404) {
+                        const localPMs = JSON.parse(localStorage.getItem('nexus_local_payment_methods') || '[]');
+                        const newPM = { ...newPaymentMethod, id: `pm-${Math.random().toString(36).substr(2, 9)}` };
+                        localPMs.push(newPM);
+                        localStorage.setItem('nexus_local_payment_methods', JSON.stringify(localPMs));
+                      }
+                    }
                     setNewPaymentMethod({ name: '', details: '', icon: 'landmark' });
                     fetchData(user!.uid);
                   }}
@@ -1792,7 +1874,15 @@ export default function App() {
                   <button 
                     className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"
                     onClick={async () => {
-                      await axios.delete(`/api/admin/payment-methods/${pm.id}`);
+                      try {
+                        await axios.delete(`/api/admin/payment-methods/${pm.id}`);
+                      } catch (err: any) {
+                        if (!err.response || err.response.status === 404) {
+                          const localPMs = JSON.parse(localStorage.getItem('nexus_local_payment_methods') || '[]');
+                          const filtered = localPMs.filter((p: any) => p.id !== pm.id);
+                          localStorage.setItem('nexus_local_payment_methods', JSON.stringify(filtered));
+                        }
+                      }
                       fetchData(user!.uid);
                     }}
                   >
