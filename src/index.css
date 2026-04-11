@@ -1,0 +1,78 @@
+@import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700&family=Outfit:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap');
+@import "tailwindcss";
+
+@theme {
+  --font-sans: "Inter", ui-sans-serif, system-ui, sans-serif;
+  --font-display: "Outfit", sans-serif;
+  --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, monospace;
+  
+  --radius-4xl: 2rem;
+  --radius-3xl: 1.5rem;
+  --radius-2xl: 1rem;
+
+  --color-brand-primary: #0f172a; /* Slate 900 */
+  --color-brand-accent: #10b981; /* Emerald 500 */
+}
+
+@layer base {
+  body {
+    @apply bg-slate-50 text-slate-900 antialiased transition-colors duration-500;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  .dark body {
+    @apply bg-zinc-950 text-zinc-100;
+  }
+
+  h1, h2, h3, h4, h5, h6 {
+    @apply font-display tracking-tight font-semibold;
+  }
+}
+
+@layer components {
+  .glass {
+    @apply bg-white/70 dark:bg-zinc-900/70 backdrop-blur-2xl border border-white/20 dark:border-zinc-800/50;
+  }
+
+  .mobile-container {
+    @apply max-w-md mx-auto min-h-screen shadow-[0_0_100px_rgba(0,0,0,0.1)] dark:shadow-none relative overflow-hidden bg-slate-50 dark:bg-zinc-950;
+  }
+
+  .nav-item-active {
+    @apply text-slate-900 dark:text-white scale-110 transition-all duration-300;
+  }
+
+  .nav-item-inactive {
+    @apply text-slate-400 dark:text-zinc-600 hover:text-slate-600 dark:hover:text-zinc-400 transition-colors;
+  }
+  
+  .card-premium {
+    @apply bg-white dark:bg-zinc-900 border border-slate-100 dark:border-zinc-800 shadow-[0_2px_15px_-3px_rgba(0,0,0,0.07),0_4px_6px_-2px_rgba(0,0,0,0.05)] hover:shadow-lg transition-all duration-300;
+  }
+
+  .btn-primary {
+    @apply bg-slate-900 dark:bg-white text-white dark:text-slate-900 px-6 py-3 rounded-2xl font-semibold active:scale-95 transition-all shadow-lg shadow-slate-900/10 dark:shadow-white/5;
+  }
+
+  .btn-secondary {
+    @apply bg-white dark:bg-zinc-800 text-slate-900 dark:text-white px-6 py-3 rounded-2xl font-semibold border border-slate-100 dark:border-zinc-700 active:scale-95 transition-all;
+  }
+}
+
+.no-scrollbar::-webkit-scrollbar {
+  display: none;
+}
+.no-scrollbar {
+  -ms-overflow-style: none;
+  scrollbar-width: none;
+}
+
+/* Custom Animations */
+@keyframes float {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-10px); }
+}
+
+.animate-float {
+  animation: float 6s ease-in-out infinite;
+}
