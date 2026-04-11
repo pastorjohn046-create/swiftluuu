@@ -59,4 +59,5 @@ export interface WithdrawalRequest {
   status: 'pending' | 'approved' | 'rejected';
   timestamp: string;
   method: string;
+  details?: string;
 }

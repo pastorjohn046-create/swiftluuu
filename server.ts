@@ -300,7 +300,7 @@ async function startServer() {
   });
 
   app.post("/api/withdrawals/request", (req, res) => {
-    const { uid, amount, method } = req.body;
+    const { uid, amount, method, details } = req.body;
     const user = db.users.find(u => u.uid === uid);
     if (!user) return res.status(404).json({ error: "User not found" });
 
@@ -311,7 +311,8 @@ async function startServer() {
       amount,
       status: 'pending',
       timestamp: new Date().toISOString(),
-      method
+      method,
+      details
     };
     db.withdrawalRequests.unshift(newRequest);
     saveDB();

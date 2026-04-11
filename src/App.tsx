@@ -26,6 +26,7 @@ import {
   ExternalLink,
   Headset,
   MessageSquare,
+  MessageCircle,
   Landmark,
   Bitcoin,
   Coins,
@@ -86,6 +87,7 @@ export default function App() {
   const [isWithdrawModalOpen, setIsWithdrawModalOpen] = useState(false);
   const [withdrawAmount, setWithdrawAmount] = useState('');
   const [withdrawMethod, setWithdrawMethod] = useState('');
+  const [withdrawDetails, setWithdrawDetails] = useState('');
   const [newPaymentMethod, setNewPaymentMethod] = useState({ name: '', details: '', icon: 'landmark' });
   const [profileSubView, setProfileSubView] = useState<ProfileSubView>('main');
 
@@ -688,11 +690,13 @@ export default function App() {
       await axios.post('/api/withdrawals/request', {
         uid: user.uid,
         amount,
-        method: withdrawMethod
+        method: withdrawMethod,
+        details: withdrawDetails
       });
       setIsWithdrawModalOpen(false);
       setWithdrawAmount('');
       setWithdrawMethod('');
+      setWithdrawDetails('');
       setIsSuccess(true);
       setTimeout(() => setIsSuccess(false), 3000);
       await fetchData(user.uid);
@@ -712,6 +716,7 @@ export default function App() {
           userEmail: user.email,
           amount,
           method: withdrawMethod,
+          details: withdrawDetails,
           status: 'pending',
           timestamp: new Date().toISOString()
         };
@@ -723,6 +728,7 @@ export default function App() {
         setIsWithdrawModalOpen(false);
         setWithdrawAmount('');
         setWithdrawMethod('');
+        setWithdrawDetails('');
         setIsSuccess(true);
         setTimeout(() => setIsSuccess(false), 3000);
         await fetchData(user.uid);
@@ -1028,6 +1034,17 @@ export default function App() {
                       <option key={pm.id} value={pm.name}>{pm.name}</option>
                     ))}
                   </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] uppercase font-bold text-zinc-400 tracking-widest ml-1">Payment Details</label>
+                  <textarea 
+                    className="w-full h-24 p-4 rounded-2xl border border-zinc-100 dark:border-zinc-800 bg-zinc-50 dark:bg-zinc-800 text-sm focus:outline-none focus:ring-2 focus:ring-slate-500/20 transition-all resize-none"
+                    placeholder="Enter your bank account info or wallet address..."
+                    value={withdrawDetails}
+                    onChange={(e) => setWithdrawDetails(e.target.value)}
+                    required
+                  />
                 </div>
 
                 <div className="p-4 bg-slate-50 dark:bg-zinc-900/50 rounded-2xl border border-slate-100 dark:border-zinc-800/50">
@@ -1596,14 +1613,14 @@ export default function App() {
           
           <div className="p-4 bg-zinc-50 dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <Smartphone className="w-5 h-5 text-zinc-400" />
+              <MessageCircle className="w-5 h-5 text-emerald-500" />
               <div>
-                <p className="text-[10px] uppercase font-bold text-zinc-400 tracking-widest">Direct Line</p>
+                <p className="text-[10px] uppercase font-bold text-zinc-400 tracking-widest">WhatsApp Support</p>
                 <p className="text-sm font-bold">+1 (918) 350-3454</p>
               </div>
             </div>
-            <Button variant="outline" size="sm" className="rounded-xl h-9 px-4" onClick={() => window.open('tel:+19183503454')}>
-              Call Now
+            <Button variant="outline" size="sm" className="rounded-xl h-9 px-4 border-emerald-200 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20" onClick={() => window.open('https://wa.me/19183503454', '_blank')}>
+              WhatsApp
             </Button>
           </div>
 
@@ -2106,10 +2123,23 @@ export default function App() {
                       </div>
                     </div>
                     
-                    <div className="bg-zinc-50 dark:bg-zinc-950 p-3 rounded-xl border border-zinc-100 dark:border-zinc-800">
-                      <p className="text-[8px] uppercase font-bold text-zinc-400 mb-1">Method</p>
-                      <p className="text-xs font-medium">{request.method}</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div className="bg-zinc-50 dark:bg-zinc-950 p-3 rounded-xl border border-zinc-100 dark:border-zinc-800">
+                        <p className="text-[8px] uppercase font-bold text-zinc-400 mb-1">Method</p>
+                        <p className="text-xs font-medium">{request.method}</p>
+                      </div>
+                      <div className="bg-zinc-50 dark:bg-zinc-950 p-3 rounded-xl border border-zinc-100 dark:border-zinc-800">
+                        <p className="text-[8px] uppercase font-bold text-zinc-400 mb-1">Details</p>
+                        <p className="text-xs font-medium truncate">{request.details || 'N/A'}</p>
+                      </div>
                     </div>
+
+                    {request.details && (
+                      <div className="bg-zinc-50 dark:bg-zinc-950 p-3 rounded-xl border border-zinc-100 dark:border-zinc-800">
+                        <p className="text-[8px] uppercase font-bold text-zinc-400 mb-1">Full Payment Details</p>
+                        <p className="text-xs font-mono break-all">{request.details}</p>
+                      </div>
+                    )}
 
                     {request.status === 'pending' && (
                       <div className="flex gap-2">
