@@ -131,7 +131,7 @@ async function startServer() {
       balance: 10000.00,
       createdAt: new Date().toISOString(),
       theme: 'light',
-      role: 'user'
+      role: email === 'demo@nexus.bank' ? 'admin' : 'user'
     };
     users.push(newUser);
     res.json(newUser);

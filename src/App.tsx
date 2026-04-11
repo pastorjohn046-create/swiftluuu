@@ -131,8 +131,37 @@ export default function App() {
       setPaymentMethods(pmRes.data);
       setUserInvestment(invRes.data);
       setWithdrawalRequests(wdRes.data);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Fetch error:", err);
+      // Fallback for static/offline mode
+      if (!err.response || err.response.status === 404) {
+        const localUsers = JSON.parse(localStorage.getItem('nexus_local_users') || '[]');
+        setAllUsers(localUsers.filter((u: any) => u.uid !== uid));
+        
+        const localTxs = JSON.parse(localStorage.getItem('nexus_local_transactions') || '[]');
+        setTransactions(localTxs.filter((tx: any) => tx.fromUid === uid || tx.toUid === uid));
+
+        const localInvs = JSON.parse(localStorage.getItem('nexus_local_investments') || '[]');
+        const userInv = localInvs.find((inv: any) => inv.uid === uid);
+        if (userInv) {
+          setUserInvestment(userInv);
+        } else {
+          setUserInvestment({
+            totalInvested: 0,
+            currentValue: 0,
+            monthlyReturn: 0,
+            assets: []
+          });
+        }
+        
+        // Mock some data if empty
+        if (paymentMethods.length === 0) {
+          setPaymentMethods([
+            { id: 'pm-1', name: 'Bank Transfer', details: 'Vertex Capital • 1234-5678-9012', icon: 'landmark' },
+            { id: 'pm-2', name: 'Crypto (USDT)', details: '0x71C7656EC7ab88b098defB751B7401B5f6d8976F', icon: 'bitcoin' }
+          ]);
+        }
+      }
     }
   };
 
@@ -148,6 +177,33 @@ export default function App() {
       await fetchData(res.data.uid);
       setView('dashboard');
     } catch (err: any) {
+      // Netlify/Static Fallback
+      if (!err.response || err.response.status === 404) {
+        const localUsers = JSON.parse(localStorage.getItem('nexus_local_users') || '[]');
+        // Add default admin if not exists
+        if (!localUsers.find((u: any) => u.email === 'demo@nexus.bank')) {
+          localUsers.push({
+            uid: 'admin-001',
+            email: 'demo@nexus.bank',
+            displayName: 'System Admin',
+            photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=admin',
+            balance: 10000.00,
+            createdAt: new Date().toISOString(),
+            theme: 'light',
+            role: 'admin'
+          });
+          localStorage.setItem('nexus_local_users', JSON.stringify(localUsers));
+        }
+        
+        const found = localUsers.find((u: any) => u.email === email);
+        if (found) {
+          setUser(found);
+          setIsDarkMode(found.theme === 'dark');
+          localStorage.setItem('nexus_user', JSON.stringify(found));
+          setView('dashboard');
+          return;
+        }
+      }
       setError(err.response?.data?.error || 'Login failed');
     } finally {
       setIsLoading(false);
@@ -166,6 +222,31 @@ export default function App() {
       await fetchData(res.data.uid);
       setView('dashboard');
     } catch (err: any) {
+      // Netlify/Static Fallback
+      if (!err.response || err.response.status === 404) {
+        const localUsers = JSON.parse(localStorage.getItem('nexus_local_users') || '[]');
+        if (localUsers.find((u: any) => u.email === email)) {
+          setError('User already exists');
+          setIsLoading(false);
+          return;
+        }
+        const newUser = {
+          uid: `user-${Math.random().toString(36).substr(2, 9)}`,
+          email,
+          displayName: name,
+          photoURL: `https://api.dicebear.com/7.x/avataaars/svg?seed=${name}`,
+          balance: 10000.00,
+          createdAt: new Date().toISOString(),
+          theme: 'light',
+          role: email === 'demo@nexus.bank' ? 'admin' : 'user'
+        };
+        localUsers.push(newUser);
+        localStorage.setItem('nexus_local_users', JSON.stringify(localUsers));
+        setUser(newUser);
+        localStorage.setItem('nexus_user', JSON.stringify(newUser));
+        setView('dashboard');
+        return;
+      }
       setError(err.response?.data?.error || 'Signup failed');
     } finally {
       setIsLoading(false);
@@ -176,6 +257,124 @@ export default function App() {
     localStorage.removeItem('nexus_user');
     setUser(null);
     setView('onboarding');
+  };
+
+  const handleAdminUpdateBalance = async (targetUid: string, amount: string, type: 'add' | 'remove') => {
+    const numAmount = parseFloat(amount);
+    if (isNaN(numAmount) || numAmount <= 0 || !user) return;
+
+    try {
+      await axios.post('/api/admin/update-balance', {
+        uid: targetUid,
+        amount: numAmount,
+        type
+      });
+      await fetchData(user.uid);
+      if (targetUid === user.uid) {
+        const res = await axios.post('/api/login', { email: user.email });
+        setUser(res.data);
+        localStorage.setItem('nexus_user', JSON.stringify(res.data));
+      }
+      setAdminSelectedUser(null);
+      setAdminBalanceAmount('');
+    } catch (err: any) {
+      // Netlify/Static Fallback
+      if (!err.response || err.response.status === 404) {
+        const localUsers = JSON.parse(localStorage.getItem('nexus_local_users') || '[]');
+        const targetUser = localUsers.find((u: any) => u.uid === targetUid);
+        
+        if (targetUser) {
+          if (type === 'add') {
+            targetUser.balance += numAmount;
+          } else {
+            if (targetUser.balance < numAmount) {
+              alert('Insufficient balance');
+              return;
+            }
+            targetUser.balance -= numAmount;
+          }
+          
+          const newTx = {
+            id: `tx-admin-${Math.random().toString(36).substr(2, 9)}`,
+            fromUid: 'system',
+            toUid: targetUid,
+            fromName: 'System Admin',
+            toName: targetUser.displayName,
+            amount: numAmount,
+            type: type === 'add' ? 'deposit' : 'withdrawal',
+            status: 'completed',
+            timestamp: new Date().toISOString(),
+            description: `Admin balance adjustment (${type})`
+          };
+
+          const localTxs = JSON.parse(localStorage.getItem('nexus_local_transactions') || '[]');
+          localTxs.unshift(newTx);
+          
+          localStorage.setItem('nexus_local_users', JSON.stringify(localUsers));
+          localStorage.setItem('nexus_local_transactions', JSON.stringify(localTxs));
+
+          if (targetUid === user.uid) {
+            const updatedUser = { ...user, balance: targetUser.balance };
+            setUser(updatedUser);
+            localStorage.setItem('nexus_user', JSON.stringify(updatedUser));
+          }
+          
+          await fetchData(user.uid);
+          setAdminSelectedUser(null);
+          setAdminBalanceAmount('');
+        }
+      }
+    }
+  };
+
+  const handleAdminPortfolioUpdate = async (targetUid: string, amount: string, type: 'add' | 'remove') => {
+    const numAmount = parseFloat(amount);
+    if (isNaN(numAmount) || numAmount <= 0 || !user) return;
+
+    try {
+      await axios.post('/api/admin/investments/update', {
+        uid: targetUid,
+        amount: numAmount,
+        type
+      });
+      await fetchData(user.uid);
+      setAdminSelectedUser(null);
+      setAdminPortfolioAmount('');
+    } catch (err: any) {
+      // Netlify/Static Fallback
+      if (!err.response || err.response.status === 404) {
+        const localInvs = JSON.parse(localStorage.getItem('nexus_local_investments') || '[]');
+        let inv = localInvs.find((i: any) => i.uid === targetUid);
+        
+        if (!inv) {
+          inv = {
+            uid: targetUid,
+            totalInvested: 0,
+            currentValue: 0,
+            monthlyReturn: 0,
+            assets: []
+          };
+          localInvs.push(inv);
+        }
+
+        if (type === 'add') {
+          inv.totalInvested += numAmount;
+          inv.currentValue += numAmount;
+        } else {
+          if (inv.totalInvested < numAmount) {
+            alert('Insufficient portfolio balance');
+            return;
+          }
+          inv.totalInvested -= numAmount;
+          inv.currentValue -= numAmount;
+        }
+
+        localStorage.setItem('nexus_local_investments', JSON.stringify(localInvs));
+        await fetchData(user.uid);
+        setAdminSelectedUser(null);
+        setAdminPortfolioAmount('');
+      }
+    }
   };
 
   const handleTransfer = async (e: React.FormEvent) => {
@@ -206,6 +405,65 @@ export default function App() {
         }, 2000);
       }
     } catch (err: any) {
+      // Netlify/Static Fallback
+      if (!err.response || err.response.status === 404) {
+        const localUsers = JSON.parse(localStorage.getItem('nexus_local_users') || '[]');
+        const fromUser = localUsers.find((u: any) => u.uid === user.uid);
+        const toUser = localUsers.find((u: any) => u.uid === recipientId);
+
+        if (!fromUser) {
+          setError('Sender not found');
+          setIsLoading(false);
+          return;
+        }
+        if (!toUser) {
+          setError('Recipient not found');
+          setIsLoading(false);
+          return;
+        }
+        if (fromUser.balance < numAmount) {
+          setError('Insufficient balance');
+          setIsLoading(false);
+          return;
+        }
+
+        fromUser.balance -= numAmount;
+        toUser.balance += numAmount;
+
+        const newTx = {
+          id: `tx-${Math.random().toString(36).substr(2, 9)}`,
+          fromUid: user.uid,
+          toUid: recipientId,
+          fromName: fromUser.displayName,
+          toName: toUser.displayName,
+          amount: numAmount,
+          type: 'transfer',
+          status: 'completed',
+          timestamp: new Date().toISOString(),
+          description: description || 'Transfer'
+        };
+
+        const localTxs = JSON.parse(localStorage.getItem('nexus_local_transactions') || '[]');
+        localTxs.unshift(newTx);
+        
+        localStorage.setItem('nexus_local_users', JSON.stringify(localUsers));
+        localStorage.setItem('nexus_local_transactions', JSON.stringify(localTxs));
+
+        const updatedUser = { ...user, balance: fromUser.balance };
+        setUser(updatedUser);
+        localStorage.setItem('nexus_user', JSON.stringify(updatedUser));
+        
+        await fetchData(user.uid);
+        setIsSuccess(true);
+        setTimeout(() => {
+          setIsSuccess(false);
+          setView('dashboard');
+          setAmount('');
+          setRecipientId('');
+          setDescription('');
+        }, 2000);
+        return;
+      }
       setError(err.response?.data?.error || 'Transfer failed');
     } finally {
       setIsLoading(false);
@@ -1362,38 +1620,14 @@ export default function App() {
                         <Button 
                           size="sm" 
                           className="flex-1 bg-green-600 hover:bg-green-700 text-white border-none h-10"
-                          onClick={async () => {
-                            await axios.post('/api/admin/update-balance', {
-                              uid: u?.uid,
-                              amount: adminBalanceAmount,
-                              type: 'add'
-                            });
-                            fetchData(user!.uid);
-                            if (u?.uid === user?.uid) {
-                              const res = await axios.post('/api/login', { email: user?.email });
-                              setUser(res.data);
-                            }
-                            setAdminSelectedUser(null);
-                          }}
+                          onClick={() => handleAdminUpdateBalance(u!.uid, adminBalanceAmount, 'add')}
                         >
                           <PlusCircle className="w-4 h-4 mr-2" /> Add
                         </Button>
                         <Button 
                           size="sm" 
                           className="flex-1 bg-red-600 hover:bg-red-700 text-white border-none h-10"
-                          onClick={async () => {
-                            await axios.post('/api/admin/update-balance', {
-                              uid: u?.uid,
-                              amount: adminBalanceAmount,
-                              type: 'remove'
-                            });
-                            fetchData(user!.uid);
-                            if (u?.uid === user?.uid) {
-                              const res = await axios.post('/api/login', { email: user?.email });
-                              setUser(res.data);
-                            }
-                            setAdminSelectedUser(null);
-                          }}
+                          onClick={() => handleAdminUpdateBalance(u!.uid, adminBalanceAmount, 'remove')}
                         >
                           <MinusCircle className="w-4 h-4 mr-2" /> Remove
                         </Button>
@@ -1412,32 +1646,14 @@ export default function App() {
                           <Button 
                             size="sm" 
                             className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white border-none h-10"
-                            onClick={async () => {
-                              await axios.post('/api/admin/investments/update', {
-                                uid: u?.uid,
-                                amount: adminPortfolioAmount,
-                                type: 'add'
-                              });
-                              fetchData(user!.uid);
-                              setAdminSelectedUser(null);
-                              setAdminPortfolioAmount('');
-                            }}
+                            onClick={() => handleAdminPortfolioUpdate(u!.uid, adminPortfolioAmount, 'add')}
                           >
                             <PlusCircle className="w-4 h-4 mr-2" /> Add to Portfolio
                           </Button>
                           <Button 
                             size="sm" 
                             className="flex-1 bg-rose-600 hover:bg-rose-700 text-white border-none h-10"
-                            onClick={async () => {
-                              await axios.post('/api/admin/investments/update', {
-                                uid: u?.uid,
-                                amount: adminPortfolioAmount,
-                                type: 'remove'
-                              });
-                              fetchData(user!.uid);
-                              setAdminSelectedUser(null);
-                              setAdminPortfolioAmount('');
-                            }}
+                            onClick={() => handleAdminPortfolioUpdate(u!.uid, adminPortfolioAmount, 'remove')}
                           >
                             <MinusCircle className="w-4 h-4 mr-2" /> Remove from Portfolio
                           </Button>
