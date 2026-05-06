@@ -2168,8 +2168,6 @@ export default function App() {
     </div>
   );
 
-  );
-
   return (
     <div className="mobile-container">
       <AnimatePresence mode="wait">
