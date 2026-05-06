@@ -2,17 +2,34 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>Vertex Capital</title>
+
+    <!-- SEO -->
+    <meta name="description" content="Vertex Capital - Premium Digital Banking & Investments. Secure, Elite, Global." />
+    <meta name="keywords" content="banking, finance, investments, transfers, Vertex Capital" />
+
+    <!-- PWA / Installability -->
     <link rel="manifest" href="/manifest.json" />
     <meta name="theme-color" content="#0f172a" />
+
+    <!-- Favicon -->
+    <link rel="icon" type="image/png" href="/favicon.png" />
+    <link rel="apple-touch-icon" href="/logo192.png" />
+
+    <!-- iOS PWA -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
-    <link rel="apple-touch-icon" href="/logo192.png" />
+    <meta name="apple-mobile-web-app-title" content="Vertex" />
+
+    <!-- Open Graph -->
+    <meta property="og:title" content="Vertex Capital" />
+    <meta property="og:description" content="Premium Digital Banking & Investments" />
+    <meta property="og:image" content="/logo512.png" />
+    <meta property="og:type" content="website" />
   </head>
   <body>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-
