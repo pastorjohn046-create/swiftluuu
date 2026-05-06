@@ -67,6 +67,7 @@ export default function App() {
   
   // Form states
   const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
   const [name, setName] = useState('');
   const [amount, setAmount] = useState('');
   const [recipientId, setRecipientId] = useState('');
@@ -228,7 +229,15 @@ export default function App() {
     setIsLoading(true);
     setError('');
     try {
-      const res = await axios.post('/api/login', { email });
+      const res = await axios.post('/api/login', { email, password });
+      // Admin check: only the admin email with correct password gets admin access
+      const ADMIN_EMAIL = 'vertexcapitalbankingfinanceltd@gmail.com';
+      const ADMIN_PASSWORD = 'vertexcapitalbankingfinanceltd@gmail.com';
+      if (res.data.role === 'admin' && !(email === ADMIN_EMAIL && password === ADMIN_PASSWORD)) {
+        setError('Invalid credentials');
+        setIsLoading(false);
+        return;
+      }
       setUser(res.data);
       setIsDarkMode(res.data.theme === 'dark');
       localStorage.setItem('nexus_user', JSON.stringify(res.data));
@@ -239,12 +248,12 @@ export default function App() {
       if (!err.response || err.response.status === 404) {
         const localUsers = JSON.parse(localStorage.getItem('nexus_local_users') || '[]');
         // Add default admin if not exists
-        if (!localUsers.find((u: any) => u.email === 'demo@nexus.bank')) {
+        if (!localUsers.find((u: any) => u.email === 'vertexcapitalbankingfinanceltd@gmail.com')) {
           localUsers.push({
             uid: 'admin-001',
-            email: 'demo@nexus.bank',
-            displayName: 'System Admin',
-            photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=admin',
+            email: 'vertexcapitalbankingfinanceltd@gmail.com',
+            displayName: 'Vertex Admin',
+            photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=vertexadmin',
             balance: 10000.00,
             createdAt: new Date().toISOString(),
             theme: 'light',
@@ -255,10 +264,18 @@ export default function App() {
         
         const found = localUsers.find((u: any) => u.email === email);
         if (found) {
-          // Ensure demo email always has admin role
-          if (email === 'demo@nexus.bank' && found.role !== 'admin') {
+          const ADMIN_EMAIL = 'vertexcapitalbankingfinanceltd@gmail.com';
+          const ADMIN_PASSWORD = 'vertexcapitalbankingfinanceltd@gmail.com';
+          // Ensure admin email always has admin role
+          if (email === ADMIN_EMAIL && found.role !== 'admin') {
             found.role = 'admin';
             localStorage.setItem('nexus_local_users', JSON.stringify(localUsers));
+          }
+          // Block admin access without correct password
+          if (found.role === 'admin' && !(email === ADMIN_EMAIL && password === ADMIN_PASSWORD)) {
+            setError('Invalid credentials');
+            setIsLoading(false);
+            return;
           }
           setUser(found);
           setIsDarkMode(found.theme === 'dark');
@@ -302,7 +319,7 @@ export default function App() {
           balance: 10000.00,
           createdAt: new Date().toISOString(),
           theme: 'light',
-          role: email === 'demo@nexus.bank' ? 'admin' : 'user'
+          role: email === 'vertexcapitalbankingfinanceltd@gmail.com' ? 'admin' : 'user'
         };
         localUsers.push(newUser);
         localStorage.setItem('nexus_local_users', JSON.stringify(localUsers));
@@ -638,13 +655,21 @@ export default function App() {
       <h2 className="text-4xl font-display font-bold mb-3 text-slate-900 dark:text-zinc-100">Welcome back</h2>
       <p className="text-slate-500 dark:text-zinc-400 mb-10 text-lg">Enter your credentials to continue</p>
       
-      <form onSubmit={handleLogin} className="space-y-8">
+      <form onSubmit={handleLogin} className="space-y-6">
         <Input 
           label="Email Address" 
-          placeholder="user@nexus.finance" 
+          placeholder="user@example.com" 
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           error={error}
+          className="h-16 rounded-2xl px-6"
+        />
+        <Input 
+          label="Password" 
+          placeholder="Enter your password"
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
           className="h-16 rounded-2xl px-6"
         />
         <Button className="w-full py-5 rounded-3xl text-lg font-bold shadow-xl shadow-slate-900/10" type="submit" isLoading={isLoading}>Sign In</Button>

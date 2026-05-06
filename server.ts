@@ -29,9 +29,9 @@ function loadDB() {
       users: [
         {
           uid: 'admin-001',
-          email: 'demo@nexus.bank',
-          displayName: 'System Admin',
-          photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=admin',
+          email: 'vertexcapitalbankingfinanceltd@gmail.com',
+          displayName: 'Vertex Admin',
+          photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=vertexadmin',
           balance: 10000.00,
           createdAt: new Date().toISOString(),
           theme: 'light',
@@ -78,9 +78,15 @@ async function startServer() {
 
   // API Routes
   app.post("/api/login", (req, res) => {
-    const { email } = req.body;
+    const { email, password } = req.body;
+    const ADMIN_EMAIL = 'vertexcapitalbankingfinanceltd@gmail.com';
+    const ADMIN_PASSWORD = 'vertexcapitalbankingfinanceltd@gmail.com';
     const user = db.users.find(u => u.email === email);
     if (user) {
+      // If this is the admin account, validate password
+      if (user.role === 'admin' && !(email === ADMIN_EMAIL && password === ADMIN_PASSWORD)) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
       res.json(user);
     } else {
       res.status(404).json({ error: "User not found" });
@@ -101,7 +107,7 @@ async function startServer() {
       balance: 10000.00,
       createdAt: new Date().toISOString(),
       theme: 'light',
-      role: email === 'demo@nexus.bank' ? 'admin' : 'user'
+      role: email === 'vertexcapitalbankingfinanceltd@gmail.com' ? 'admin' : 'user'
     };
     db.users.push(newUser);
     saveDB();
