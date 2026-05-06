@@ -50,10 +50,10 @@ type ProfileSubView = 'main' | 'personal' | 'cards' | 'security' | 'notification
 
 const Logo = ({ className }: { className?: string }) => (
   <div className={cn("flex items-center gap-3", className)}>
-    <div className="w-12 h-12 bg-slate-900 dark:bg-white rounded-2xl flex items-center justify-center shadow-xl shadow-slate-900/10 dark:shadow-white/5">
-      <Wallet className="w-7 h-7 text-white dark:text-slate-900" />
+    <div className="w-12 h-12 bg-gradient-to-br from-slate-800 to-slate-950 dark:from-white dark:to-slate-200 rounded-2xl flex items-center justify-center shadow-2xl shadow-slate-900/20 dark:shadow-white/10">
+      <Wallet className="w-6 h-6 text-white dark:text-slate-900" />
     </div>
-    <span className="text-2xl font-display font-bold tracking-tight text-slate-900 dark:text-white">Vertex</span>
+    <span className="text-2xl font-display font-bold tracking-tight text-slate-900 dark:text-white bg-clip-text">Vertex</span>
   </div>
 );
 
@@ -789,8 +789,8 @@ export default function App() {
             <div className="absolute -bottom-1 -right-1 w-3 h-3 bg-green-500 border-2 border-white dark:border-zinc-900 rounded-full" />
           </div>
           <div>
-            <p className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">User #{user?.uid.split('-')[1] || user?.uid}</p>
-            <p className="font-bold text-sm text-zinc-900 dark:text-zinc-100">{user?.displayName}</p>
+            <p className="text-[10px] text-zinc-500 dark:text-zinc-400 uppercase tracking-wider">User #{user?.uid?.split('-')[1] || user?.uid || '---'}</p>
+            <p className="font-bold text-sm text-zinc-900 dark:text-zinc-100">{user?.displayName || 'Loading...'}</p>
           </div>
         </div>
         <div className="flex gap-2">
@@ -823,7 +823,7 @@ export default function App() {
               <div className="flex justify-between items-start mb-8">
                 <div>
                   <p className="text-slate-400 dark:text-slate-500 text-[10px] uppercase font-bold tracking-[0.2em] mb-1">Total Balance</p>
-                  <h3 className="text-4xl font-display font-bold tracking-tight">${user?.balance.toLocaleString(undefined, { minimumFractionDigits: 2 })}</h3>
+                  <h3 className="text-4xl font-display font-bold tracking-tight">${user?.balance?.toLocaleString(undefined, { minimumFractionDigits: 2 }) || '0.00'}</h3>
                 </div>
                 <div className="flex gap-1.5">
                   <div className="w-2 h-2 rounded-full bg-emerald-500 shadow-[0_0_10px_rgba(16,185,129,0.5)]" />
@@ -977,13 +977,13 @@ export default function App() {
 
       {/* Bottom Nav */}
       <nav className="fixed bottom-0 left-0 right-0 p-4 glass flex justify-around items-center z-20">
-        <button className="p-2 nav-item-active" onClick={() => setView('dashboard')}>
+        <button className={cn("p-2", view === 'dashboard' ? "nav-item-active" : "nav-item-inactive")} onClick={() => setView('dashboard')}>
           <Wallet className="w-6 h-6" />
         </button>
-        <button className="p-2 nav-item-inactive" onClick={() => setView('history')}>
-          <PieChart className="w-6 h-6" />
+        <button className={cn("p-2", view === 'history' ? "nav-item-active" : "nav-item-inactive")} onClick={() => setView('history')}>
+          <History className="w-6 h-6" />
         </button>
-        <button className="p-2 nav-item-inactive" onClick={() => setView('profile')}>
+        <button className={cn("p-2", view === 'profile' ? "nav-item-active" : "nav-item-inactive")} onClick={() => setView('profile')}>
           <User className="w-6 h-6" />
         </button>
       </nav>
@@ -1221,13 +1221,13 @@ export default function App() {
 
       {/* Bottom Nav */}
       <nav className="fixed bottom-0 left-0 right-0 p-4 glass flex justify-around items-center z-20">
-        <button className="p-2 nav-item-inactive" onClick={() => setView('dashboard')}>
+        <button className={cn("p-2", view === 'dashboard' ? "nav-item-active" : "nav-item-inactive")} onClick={() => setView('dashboard')}>
           <Wallet className="w-6 h-6" />
         </button>
-        <button className="p-2 nav-item-active" onClick={() => setView('history')}>
-          <PieChart className="w-6 h-6" />
+        <button className={cn("p-2", view === 'history' ? "nav-item-active" : "nav-item-inactive")} onClick={() => setView('history')}>
+          <History className="w-6 h-6" />
         </button>
-        <button className="p-2 nav-item-inactive" onClick={() => setView('profile')}>
+        <button className={cn("p-2", view === 'profile' ? "nav-item-active" : "nav-item-inactive")} onClick={() => setView('profile')}>
           <User className="w-6 h-6" />
         </button>
       </nav>
@@ -1575,13 +1575,13 @@ export default function App() {
 
         {/* Bottom Nav */}
         <nav className="fixed bottom-0 left-0 right-0 p-4 glass flex justify-around items-center z-20">
-          <button className="p-2 nav-item-inactive" onClick={() => setView('dashboard')}>
+          <button className={cn("p-2", view === 'dashboard' ? "nav-item-active" : "nav-item-inactive")} onClick={() => setView('dashboard')}>
             <Wallet className="w-6 h-6" />
           </button>
-          <button className="p-2 nav-item-inactive" onClick={() => setView('history')}>
-            <PieChart className="w-6 h-6" />
+          <button className={cn("p-2", view === 'history' ? "nav-item-active" : "nav-item-inactive")} onClick={() => setView('history')}>
+            <History className="w-6 h-6" />
           </button>
-          <button className="p-2 nav-item-active" onClick={() => setView('profile')}>
+          <button className={cn("p-2", view === 'profile' ? "nav-item-active" : "nav-item-inactive")} onClick={() => setView('profile')}>
             <User className="w-6 h-6" />
           </button>
         </nav>
@@ -1616,10 +1616,10 @@ export default function App() {
               <MessageCircle className="w-5 h-5 text-emerald-500" />
               <div>
                 <p className="text-[10px] uppercase font-bold text-zinc-400 tracking-widest">WhatsApp Support</p>
-                <p className="text-sm font-bold">+1 (918) 350-3454</p>
+                <p className="text-sm font-bold">+1 (336) 324-7969</p>
               </div>
             </div>
-            <Button variant="outline" size="sm" className="rounded-xl h-9 px-4 border-emerald-200 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20" onClick={() => window.open('https://wa.me/19183503454', '_blank')}>
+            <Button variant="outline" size="sm" className="rounded-xl h-9 px-4 border-emerald-200 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20" onClick={() => window.open('https://wa.me/13363247969', '_blank')}>
               WhatsApp
             </Button>
           </div>
@@ -2166,6 +2166,8 @@ export default function App() {
         )}
       </main>
     </div>
+  );
+
   );
 
   return (
