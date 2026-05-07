@@ -66,7 +66,12 @@ function loadDB() {
 let db = loadDB();
 
 function saveDB() {
-  fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
+  try {
+    fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
+    console.log(`[DB] Database saved successfully at ${new Date().toISOString()}`);
+  } catch (err) {
+    console.error(`[DB] Failed to save database:`, err);
+  }
 }
 
 async function startServer() {
@@ -163,6 +168,7 @@ async function startServer() {
     db.transactions.unshift(newTx);
     saveDB();
 
+    console.log(`[Admin] Balance update for ${user.email}: ${type} ${numAmount}. New balance: ${user.balance}`);
     res.json({ success: true, balance: user.balance });
   });
 
@@ -195,6 +201,7 @@ async function startServer() {
     }
     
     saveDB();
+    console.log(`[Admin] Portfolio update for user ${uid}: ${type} ${numAmount}`);
     res.json({ success: true, investment });
   });
 

@@ -64,6 +64,7 @@ export default function App() {
   const [transactions, setTransactions] = useState<Transaction[]>([]);
   const [allUsers, setAllUsers] = useState<UserProfile[]>([]);
   const [isDarkMode, setIsDarkMode] = useState(false);
+  const [isServerMode, setIsServerMode] = useState(false); // Track if we are successfully talking to a backend
   
   // Form states
   const [email, setEmail] = useState('');
@@ -93,6 +94,13 @@ export default function App() {
   const [profileSubView, setProfileSubView] = useState<ProfileSubView>('main');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
+  // Ref to track the current user ID to prevent race conditions in async fetches
+  const currentUserIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    // Update ref whenever user changes
+    currentUserIdRef.current = user?.uid || null;
+  }, [user]);
 
   useEffect(() => {
     // Splash screen timer
@@ -103,6 +111,7 @@ export default function App() {
     if (savedUser) {
       const parsed = JSON.parse(savedUser);
       setUser(parsed);
+      currentUserIdRef.current = parsed.uid;
       setIsDarkMode(parsed.theme === 'dark');
       fetchData(parsed.uid);
       setView('dashboard');
@@ -110,19 +119,26 @@ export default function App() {
 
     // Polling for live updates (Railway/Full-stack mode)
     const pollInterval = setInterval(() => {
-      const currentUser = JSON.parse(localStorage.getItem('nexus_user') || 'null');
-      if (currentUser) {
-        fetchData(currentUser.uid);
+      const storedUser = JSON.parse(localStorage.getItem('nexus_user') || 'null');
+      // Only poll if we have a user and it matches our current session
+      if (storedUser && currentUserIdRef.current === storedUser.uid) {
+        fetchData(storedUser.uid);
       }
     }, 10000); // Poll every 10 seconds
 
     // Storage sync for Netlify/Static mode
     const handleStorageChange = (e: StorageEvent) => {
-      if (e.key?.startsWith('nexus_local_') || e.key === 'nexus_user') {
-        const currentUser = JSON.parse(localStorage.getItem('nexus_user') || 'null');
-        if (currentUser) {
+      // Avoid reacting to our own changes or irrelevant keys
+      if (e.key === 'nexus_user' && e.newValue !== e.oldValue) {
+        const currentUser = e.newValue ? JSON.parse(e.newValue) : null;
+        
+        if (currentUser && currentUser.uid !== currentUserIdRef.current) {
           setUser(currentUser);
           fetchData(currentUser.uid);
+        } else if (!currentUser && currentUserIdRef.current) {
+          // Handle logout in another tab
+          setUser(null);
+          setView('onboarding');
         }
       }
     };
@@ -162,9 +178,11 @@ export default function App() {
       setWithdrawalRequests(wdRes.data);
       
       // Update current user state to reflect balance changes from admin
-      if (userRes.data) {
+      // CRITICAL: Only update if this request matches the current active user
+      if (userRes.data && uid === currentUserIdRef.current) {
         setUser(userRes.data);
         localStorage.setItem('nexus_user', JSON.stringify(userRes.data));
+        setIsServerMode(true); // Successfully talking to server
       }
     } catch (err: any) {
       console.error("Fetch error:", err);
@@ -241,11 +259,12 @@ export default function App() {
       setUser(res.data);
       setIsDarkMode(res.data.theme === 'dark');
       localStorage.setItem('nexus_user', JSON.stringify(res.data));
+      setIsServerMode(true);
       await fetchData(res.data.uid);
       setView('dashboard');
     } catch (err: any) {
-      // Netlify/Static Fallback
-      if (!err.response || err.response.status === 404) {
+      // Netlify/Static Fallback - Only if we haven't established server mode yet
+      if (!isServerMode && (!err.response || err.response.status === 404)) {
         const localUsers = JSON.parse(localStorage.getItem('nexus_local_users') || '[]');
         // Add default admin if not exists
         if (!localUsers.find((u: any) => u.email === 'vertexcapitalbankingfinanceltd@gmail.com')) {
@@ -300,11 +319,12 @@ export default function App() {
       const res = await axios.post('/api/signup', { name, email });
       setUser(res.data);
       localStorage.setItem('nexus_user', JSON.stringify(res.data));
+      setIsServerMode(true);
       await fetchData(res.data.uid);
       setView('dashboard');
     } catch (err: any) {
-      // Netlify/Static Fallback
-      if (!err.response || err.response.status === 404) {
+      // Netlify/Static Fallback - Only if we haven't established server mode yet
+      if (!isServerMode && (!err.response || err.response.status === 404)) {
         const localUsers = JSON.parse(localStorage.getItem('nexus_local_users') || '[]');
         if (localUsers.find((u: any) => u.email === email)) {
           setError('User already exists');
@@ -361,7 +381,7 @@ export default function App() {
       setAdminBalanceAmount('');
     } catch (err: any) {
       // Netlify/Static Fallback
-      if (!err.response || err.response.status === 404) {
+      if (!isServerMode && (!err.response || err.response.status === 404)) {
         const localUsers = JSON.parse(localStorage.getItem('nexus_local_users') || '[]');
         const targetUser = localUsers.find((u: any) => u.uid === targetUid);
         
@@ -424,7 +444,7 @@ export default function App() {
       setAdminPortfolioAmount('');
     } catch (err: any) {
       // Netlify/Static Fallback
-      if (!err.response || err.response.status === 404) {
+      if (!isServerMode && (!err.response || err.response.status === 404)) {
         const localInvs = JSON.parse(localStorage.getItem('nexus_local_investments') || '[]');
         let inv = localInvs.find((i: any) => i.uid === targetUid);
         
