@@ -79,7 +79,8 @@ async function startServer() {
   const PORT = process.env.PORT || 3000;
 
   app.use(cors());
-  app.use(bodyParser.json());
+  app.use(bodyParser.json({ limit: '10mb' }));
+  app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
 
   // API Routes
   app.post("/api/login", (req, res) => {
@@ -482,10 +483,11 @@ async function startServer() {
         resource_type: "auto",
       });
       
+      console.log(`[Upload] Image uploaded successfully: ${result.secure_url}`);
       res.json({ url: result.secure_url });
-    } catch (error) {
-      console.error("Upload error:", error);
-      res.status(500).json({ error: "Upload failed" });
+    } catch (error: any) {
+      console.error("Upload error details:", error.message || error);
+      res.status(500).json({ error: "Upload failed: " + (error.message || "Internal server error") });
     }
   });
 

@@ -99,6 +99,7 @@ export default function App() {
   const [extBankName, setExtBankName] = useState('');
   const [extAccountNum, setExtAccountNum] = useState('');
   const [extSwiftCode, setExtSwiftCode] = useState('');
+  const [adminTargetUserForPhoto, setAdminTargetUserForPhoto] = useState<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Ref to track the current user ID to prevent race conditions in async fetches
@@ -536,33 +537,42 @@ export default function App() {
       if (!err.response || err.response.status === 404) {
         const localUsers = JSON.parse(localStorage.getItem('nexus_local_users') || '[]');
         const fromUser = localUsers.find((u: any) => u.uid === user.uid);
-        const toUser = localUsers.find((u: any) => u.uid === recipientId);
-
+        
         if (!fromUser) {
           setError('Sender not found');
           setIsLoading(false);
           return;
         }
-        if (!toUser) {
-          setError('Recipient not found');
-          setIsLoading(false);
-          return;
-        }
-        if (fromUser.balance < numAmount) {
-          setError('Insufficient balance');
-          setIsLoading(false);
-          return;
-        }
 
-        fromUser.balance -= numAmount;
-        toUser.balance += numAmount;
+        if (transferType === 'internal') {
+          const toUser = localUsers.find((u: any) => u.uid === recipientId);
+          if (!toUser) {
+            setError('Recipient not found');
+            setIsLoading(false);
+            return;
+          }
+          if (fromUser.balance < numAmount) {
+            setError('Insufficient balance');
+            setIsLoading(false);
+            return;
+          }
+          fromUser.balance -= numAmount;
+          toUser.balance += numAmount;
+        } else {
+          if (fromUser.balance < numAmount) {
+            setError('Insufficient balance');
+            setIsLoading(false);
+            return;
+          }
+          fromUser.balance -= numAmount;
+        }
 
         const newTx = {
           id: `tx-${Math.random().toString(36).substr(2, 9)}`,
           fromUid: user.uid,
           toUid: transferType === 'internal' ? recipientId : 'external',
           fromName: fromUser.displayName,
-          toName: transferType === 'internal' ? (toUser?.displayName || 'Recipient') : extBankName,
+          toName: transferType === 'internal' ? (localUsers.find((u: any) => u.uid === recipientId)?.displayName || 'Recipient') : extBankName,
           amount: numAmount,
           type: 'transfer',
           status: transferType === 'internal' ? 'completed' : 'pending',
@@ -642,10 +652,29 @@ export default function App() {
       setUser(updatedUser);
       localStorage.setItem('nexus_user', JSON.stringify(updatedUser));
       
+      // If admin is updating another user's photo
+      if (adminTargetUserForPhoto && adminTargetUserForPhoto !== user.uid) {
+        try {
+          await axios.post('/api/user/update-profile', {
+            uid: adminTargetUserForPhoto,
+            photoURL: photoURL
+          });
+        } catch (adminErr) {
+          // Static fallback for admin photo update
+          const localUsers = JSON.parse(localStorage.getItem('nexus_local_users') || '[]');
+          const targetIdx = localUsers.findIndex((u: any) => u.uid === adminTargetUserForPhoto);
+          if (targetIdx !== -1) {
+            localUsers[targetIdx].photoURL = photoURL;
+            localStorage.setItem('nexus_local_users', JSON.stringify(localUsers));
+          }
+        }
+        setAdminTargetUserForPhoto(null);
+      }
+      
       await fetchData(user.uid);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Avatar change failed:", err);
-      setError('Failed to update avatar');
+      setError('Failed to update avatar: ' + (err.response?.data?.error || err.message));
     } finally {
       setIsLoading(false);
     }
@@ -2023,7 +2052,18 @@ export default function App() {
                 <Card key={u?.uid} className="p-4 bg-white dark:bg-zinc-900 shadow-sm">
                   <div className="flex items-center justify-between mb-4">
                     <div className="flex items-center gap-3">
-                      <img src={u?.photoURL} alt="" className="w-10 h-10 rounded-full object-cover" />
+                      <div className="relative group">
+                        <img src={u?.photoURL} alt="" className="w-12 h-12 rounded-full object-cover border-2 border-white dark:border-zinc-800 shadow-sm" />
+                        <button 
+                          onClick={() => {
+                            setAdminTargetUserForPhoto(u?.uid || null);
+                            fileInputRef.current?.click();
+                          }}
+                          className="absolute -bottom-1 -right-1 p-1.5 bg-black dark:bg-white text-white dark:text-black rounded-full shadow-lg scale-0 group-hover:scale-100 transition-transform"
+                        >
+                          <Camera className="w-3 h-3" />
+                        </button>
+                      </div>
                       <div>
                         <p className="font-bold text-sm">{u?.displayName}</p>
                         <p className="text-[10px] text-zinc-500">{u?.email}</p>
@@ -2051,6 +2091,17 @@ export default function App() {
                       }}
                     >
                       Manage Balance
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      className="flex-1 text-[10px] h-8"
+                      onClick={() => {
+                        setAdminActiveTab('transactions');
+                        // Optional: filter transactions for this user
+                      }}
+                    >
+                      History
                     </Button>
                     {u?.uid !== user?.uid && (
                       <Button 
