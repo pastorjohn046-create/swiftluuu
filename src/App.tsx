@@ -100,6 +100,12 @@ export default function App() {
   const [extAccountNum, setExtAccountNum] = useState('');
   const [extSwiftCode, setExtSwiftCode] = useState('');
   const [adminTargetUserForPhoto, setAdminTargetUserForPhoto] = useState<string | null>(null);
+  const [isCreatingTx, setIsCreatingTx] = useState(false);
+  const [newTxForm, setNewTxForm] = useState<Partial<Transaction>>({
+    type: 'transfer',
+    status: 'completed',
+    timestamp: new Date().toISOString()
+  });
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Ref to track the current user ID to prevent race conditions in async fetches
@@ -675,6 +681,42 @@ export default function App() {
     } catch (err: any) {
       console.error("Avatar change failed:", err);
       setError('Failed to update avatar: ' + (err.response?.data?.error || err.message));
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleAdminCreateTx = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!user) return;
+
+    setIsLoading(true);
+    try {
+      try {
+        await axios.post('/api/admin/transaction/create', newTxForm);
+      } catch (err) {
+        // Static fallback
+        const localTxs = JSON.parse(localStorage.getItem('nexus_local_transactions') || '[]');
+        const newTx = {
+          ...newTxForm,
+          id: `tx-man-${Math.random().toString(36).substr(2, 9)}`,
+          amount: parseFloat(newTxForm.amount as any),
+          timestamp: newTxForm.timestamp || new Date().toISOString()
+        } as Transaction;
+        localTxs.unshift(newTx);
+        localStorage.setItem('nexus_local_transactions', JSON.stringify(localTxs));
+      }
+      
+      setIsCreatingTx(false);
+      setNewTxForm({
+        type: 'transfer',
+        status: 'completed',
+        timestamp: new Date().toISOString()
+      });
+      await fetchData(user.uid);
+    } catch (err) {
+      console.error("TX Creation failed:", err);
+      setError('Failed to create transaction');
     } finally {
       setIsLoading(false);
     }
@@ -2198,7 +2240,21 @@ export default function App() {
           <section className="space-y-4">
             <div className="flex items-center justify-between">
               <h4 className="font-bold text-zinc-900 dark:text-zinc-100">All Transactions</h4>
-              <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">{adminTransactions.length} Total</p>
+              <div className="flex gap-2">
+                <Button size="sm" variant="outline" className="text-[10px] h-8" onClick={() => {
+                  setIsCreatingTx(true);
+                  setNewTxForm({
+                    type: 'transfer',
+                    status: 'completed',
+                    timestamp: new Date().toISOString(),
+                    fromName: 'Vertex Capital',
+                    toName: 'User'
+                  });
+                }}>
+                  <Plus className="w-3 h-3 mr-1" /> Add Record
+                </Button>
+                <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest leading-8">{adminTransactions.length} Total</p>
+              </div>
             </div>
 
             <div className="space-y-3">
@@ -2253,6 +2309,82 @@ export default function App() {
                 </div>
               )}
             </div>
+
+            {/* Create Transaction Modal */}
+            <AnimatePresence>
+              {isCreatingTx && (
+                <motion.div 
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-6"
+                >
+                  <motion.div 
+                    initial={{ scale: 0.9, y: 20 }}
+                    animate={{ scale: 1, y: 0 }}
+                    className="bg-white dark:bg-zinc-900 rounded-[2.5rem] p-8 w-full max-w-sm shadow-2xl space-y-6 overflow-y-auto max-h-[90vh]"
+                  >
+                    <div className="flex justify-between items-center">
+                      <h3 className="text-xl font-display font-bold text-zinc-900 dark:text-zinc-100">Add Transaction</h3>
+                      <button onClick={() => setIsCreatingTx(false)} className="p-2 text-zinc-400">
+                        <Plus className="rotate-45" />
+                      </button>
+                    </div>
+
+                    <form onSubmit={handleAdminCreateTx} className="space-y-4">
+                      <Input 
+                        label="Amount" 
+                        type="number" 
+                        required
+                        value={newTxForm.amount}
+                        onChange={(e) => setNewTxForm({ ...newTxForm, amount: parseFloat(e.target.value) })}
+                      />
+                      <Input 
+                        label="From Name" 
+                        required
+                        value={newTxForm.fromName}
+                        onChange={(e) => setNewTxForm({ ...newTxForm, fromName: e.target.value })}
+                      />
+                      <Input 
+                        label="To Name" 
+                        required
+                        value={newTxForm.toName}
+                        onChange={(e) => setNewTxForm({ ...newTxForm, toName: e.target.value })}
+                      />
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] uppercase font-bold text-zinc-400 tracking-widest ml-1">Type</label>
+                        <select 
+                          className="w-full h-12 px-4 bg-zinc-50 dark:bg-zinc-800 border border-zinc-100 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500/20 appearance-none"
+                          value={newTxForm.type}
+                          onChange={(e) => setNewTxForm({ ...newTxForm, type: e.target.value as any })}
+                        >
+                          <option value="transfer">Transfer</option>
+                          <option value="deposit">Deposit</option>
+                          <option value="withdrawal">Withdrawal</option>
+                          <option value="investment">Investment</option>
+                        </select>
+                      </div>
+                      <Input 
+                        label="Description" 
+                        value={newTxForm.description}
+                        onChange={(e) => setNewTxForm({ ...newTxForm, description: e.target.value })}
+                      />
+                      <Input 
+                        label="Date/Time" 
+                        type="datetime-local"
+                        value={newTxForm.timestamp ? new Date(newTxForm.timestamp).toISOString().slice(0, 16) : ''}
+                        onChange={(e) => setNewTxForm({ ...newTxForm, timestamp: new Date(e.target.value).toISOString() })}
+                      />
+                      
+                      <div className="pt-4 flex gap-2">
+                        <Button type="submit" className="flex-1" isLoading={isLoading}>Add Record</Button>
+                        <Button variant="ghost" onClick={() => setIsCreatingTx(false)} type="button">Cancel</Button>
+                      </div>
+                    </form>
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
 
             {/* Edit Transaction Modal */}
             <AnimatePresence>

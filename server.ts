@@ -333,6 +333,27 @@ async function startServer() {
     }
   });
 
+  app.post("/api/admin/transaction/create", (req, res) => {
+    const { fromUid, toUid, amount, type, description, timestamp, fromName, toName, status } = req.body;
+    
+    const newTx = {
+      id: `tx-man-${Math.random().toString(36).substr(2, 9)}`,
+      fromUid: fromUid || 'system',
+      toUid: toUid || 'external',
+      fromName: fromName || 'System',
+      toName: toName || 'User',
+      amount: parseFloat(amount),
+      type: type || 'transfer',
+      status: status || 'completed',
+      timestamp: timestamp || new Date().toISOString(),
+      description: description || 'Manual Transaction'
+    };
+
+    db.transactions.unshift(newTx);
+    saveDB();
+    res.json(newTx);
+  });
+
   app.delete("/api/transactions/:uid", (req, res) => {
     const { uid } = req.params;
     db.transactions = db.transactions.filter(t => t.fromUid !== uid && t.toUid !== uid);
