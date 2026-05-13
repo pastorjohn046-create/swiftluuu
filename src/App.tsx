@@ -124,11 +124,18 @@ export default function App() {
     const savedUser = localStorage.getItem('nexus_user');
     if (savedUser) {
       const parsed = JSON.parse(savedUser);
-      setUser(parsed);
-      currentUserIdRef.current = parsed.uid;
-      setIsDarkMode(parsed.theme === 'dark');
-      fetchData(parsed.uid);
-      setView('dashboard');
+      if (parsed.role === 'admin') {
+        // For admin security, force re-login on fresh load/refresh
+        localStorage.removeItem('nexus_user');
+        setUser(null);
+        setView('login');
+      } else {
+        setUser(parsed);
+        currentUserIdRef.current = parsed.uid;
+        setIsDarkMode(parsed.theme === 'dark');
+        fetchData(parsed.uid);
+        setView('dashboard');
+      }
     }
 
     // Polling for live updates (Railway/Full-stack mode)
@@ -2339,18 +2346,43 @@ export default function App() {
                         value={newTxForm.amount}
                         onChange={(e) => setNewTxForm({ ...newTxForm, amount: parseFloat(e.target.value) })}
                       />
-                      <Input 
-                        label="From Name" 
-                        required
-                        value={newTxForm.fromName}
-                        onChange={(e) => setNewTxForm({ ...newTxForm, fromName: e.target.value })}
-                      />
-                      <Input 
-                        label="To Name" 
-                        required
-                        value={newTxForm.toName}
-                        onChange={(e) => setNewTxForm({ ...newTxForm, toName: e.target.value })}
-                      />
+                      
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] uppercase font-bold text-zinc-400 tracking-widest ml-1">From (Sender)</label>
+                        <select 
+                          className="w-full h-12 px-4 bg-zinc-50 dark:bg-zinc-800 border border-zinc-100 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500/20 appearance-none"
+                          value={newTxForm.fromUid || ''}
+                          onChange={(e) => {
+                            const u = [user, ...allUsers].find(usr => usr?.uid === e.target.value);
+                            setNewTxForm({ ...newTxForm, fromUid: e.target.value, fromName: u?.displayName || 'System' });
+                          }}
+                        >
+                          <option value="system">System (Vertex Capital)</option>
+                          {[user, ...allUsers].map(u => (
+                            <option key={u?.uid} value={u?.uid}>{u?.displayName} ({u?.email})</option>
+                          ))}
+                          <option value="external">External Source</option>
+                        </select>
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <label className="text-[10px] uppercase font-bold text-zinc-400 tracking-widest ml-1">To (Recipient)</label>
+                        <select 
+                          className="w-full h-12 px-4 bg-zinc-50 dark:bg-zinc-800 border border-zinc-100 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500/20 appearance-none"
+                          value={newTxForm.toUid || ''}
+                          onChange={(e) => {
+                            const u = [user, ...allUsers].find(usr => usr?.uid === e.target.value);
+                            setNewTxForm({ ...newTxForm, toUid: e.target.value, toName: u?.displayName || 'User' });
+                          }}
+                        >
+                          <option value="">Select Recipient</option>
+                          {[user, ...allUsers].map(u => (
+                            <option key={u?.uid} value={u?.uid}>{u?.displayName} ({u?.email})</option>
+                          ))}
+                          <option value="external">External Destination</option>
+                        </select>
+                      </div>
+
                       <div className="space-y-1.5">
                         <label className="text-[10px] uppercase font-bold text-zinc-400 tracking-widest ml-1">Type</label>
                         <select 
@@ -2364,20 +2396,17 @@ export default function App() {
                           <option value="investment">Investment</option>
                         </select>
                       </div>
+                      
                       <Input 
-                        label="Description" 
+                        label="Custom Description" 
                         value={newTxForm.description}
                         onChange={(e) => setNewTxForm({ ...newTxForm, description: e.target.value })}
                       />
-                      <Input 
-                        label="Date/Time" 
-                        type="datetime-local"
-                        value={newTxForm.timestamp ? new Date(newTxForm.timestamp).toISOString().slice(0, 16) : ''}
-                        onChange={(e) => setNewTxForm({ ...newTxForm, timestamp: new Date(e.target.value).toISOString() })}
-                      />
                       
                       <div className="pt-4 flex gap-2">
-                        <Button type="submit" className="flex-1" isLoading={isLoading}>Add Record</Button>
+                        <Button type="submit" className="flex-1" isLoading={isLoading} disabled={!newTxForm.amount || !newTxForm.toName}>
+                          Add Record
+                        </Button>
                         <Button variant="ghost" onClick={() => setIsCreatingTx(false)} type="button">Cancel</Button>
                       </div>
                     </form>

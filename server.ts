@@ -22,7 +22,7 @@ const upload = multer({ storage });
 
 // Database Persistence
 const DB_PATH = path.join(process.cwd(), "data.json");
-const UPLOADS_DIR = path.join(process.cwd(), "public", "uploads");
+const UPLOADS_DIR = path.join(process.cwd(), "uploads");
 
 // Ensure uploads directory exists
 if (!fs.existsSync(UPLOADS_DIR)) {
@@ -525,8 +525,9 @@ async function startServer() {
       const filePath = path.join(UPLOADS_DIR, fileName);
       fs.writeFileSync(filePath, req.file.buffer);
       
-      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
       const host = req.headers.host;
+      // Use https for railway or other proxies
+      const protocol = req.headers['x-forwarded-proto'] || 'http';
       const localUrl = `${protocol}://${host}/uploads/${fileName}`;
       
       console.log(`[Upload] Image saved locally: ${localUrl}`);
