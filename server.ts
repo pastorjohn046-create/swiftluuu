@@ -133,6 +133,19 @@ async function startServer() {
     }
   });
 
+  app.post("/api/user/update-profile", (req, res) => {
+    const { uid, photoURL, displayName } = req.body;
+    const user = db.users.find(u => u.uid === uid);
+    if (user) {
+      if (photoURL) user.photoURL = photoURL;
+      if (displayName) user.displayName = displayName;
+      saveDB();
+      res.json(user);
+    } else {
+      res.status(404).json({ error: "User not found" });
+    }
+  });
+
   // Admin Routes
   app.post("/api/admin/update-balance", (req, res) => {
     const { uid, amount, type } = req.body; // type: 'add' | 'remove'
@@ -157,7 +170,7 @@ async function startServer() {
       id: `tx-admin-${Math.random().toString(36).substr(2, 9)}`,
       fromUid: 'system',
       toUid: uid,
-      fromName: 'System Admin',
+      fromName: user.displayName,
       toName: user.displayName,
       amount: numAmount,
       type: type === 'add' ? 'deposit' : 'withdrawal',
@@ -286,6 +299,39 @@ async function startServer() {
     res.json(userTxs);
   });
 
+  app.get("/api/admin/transactions", (req, res) => {
+    res.json(db.transactions);
+  });
+
+  app.post("/api/admin/transaction/update", (req, res) => {
+    const { id, amount, description, timestamp, fromName, toName, status } = req.body;
+    const tx = db.transactions.find(t => t.id === id);
+    if (tx) {
+      if (amount !== undefined) tx.amount = parseFloat(amount);
+      if (description !== undefined) tx.description = description;
+      if (timestamp !== undefined) tx.timestamp = timestamp;
+      if (fromName !== undefined) tx.fromName = fromName;
+      if (toName !== undefined) tx.toName = toName;
+      if (status !== undefined) tx.status = status;
+      saveDB();
+      res.json(tx);
+    } else {
+      res.status(404).json({ error: "Transaction not found" });
+    }
+  });
+
+  app.post("/api/admin/transaction/delete", (req, res) => {
+    const { id } = req.body;
+    const index = db.transactions.findIndex(t => t.id === id);
+    if (index !== -1) {
+      db.transactions.splice(index, 1);
+      saveDB();
+      res.json({ success: true });
+    } else {
+      res.status(404).json({ error: "Transaction not found" });
+    }
+  });
+
   app.delete("/api/transactions/:uid", (req, res) => {
     const { uid } = req.params;
     db.transactions = db.transactions.filter(t => t.fromUid !== uid && t.toUid !== uid);
@@ -372,12 +418,36 @@ async function startServer() {
   });
 
   app.post("/api/transfer", (req, res) => {
-    const { fromUid, toUid, amount, description } = req.body;
+    const { fromUid, toUid, amount, description, externalBankDetails } = req.body;
     const fromUser = db.users.find(u => u.uid === fromUid);
-    const toUser = db.users.find(u => u.uid === toUid);
+    
+    if (!fromUser || fromUser.balance < amount) {
+      return res.status(400).json({ error: "Invalid transfer or insufficient balance" });
+    }
 
-    if (!fromUser || !toUser || fromUser.balance < amount) {
-      return res.status(400).json({ error: "Invalid transfer" });
+    if (toUid === 'external' && externalBankDetails) {
+      fromUser.balance -= amount;
+      const newTx = {
+        id: `tx-ext-${Math.random().toString(36).substr(2, 9)}`,
+        fromUid,
+        toUid: 'external',
+        fromName: fromUser.displayName,
+        toName: externalBankDetails.bankName || 'External Bank',
+        amount,
+        type: 'transfer',
+        status: 'pending', // External transfers might be pending
+        timestamp: new Date().toISOString(),
+        description: description || `Transfer to ${externalBankDetails.accountNumber}`,
+        externalBankDetails
+      };
+      db.transactions.unshift(newTx);
+      saveDB();
+      return res.json({ success: true, transaction: newTx, balance: fromUser.balance });
+    }
+
+    const toUser = db.users.find(u => u.uid === toUid);
+    if (!toUser) {
+      return res.status(400).json({ error: "Recipient not found" });
     }
 
     fromUser.balance -= amount;

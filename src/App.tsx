@@ -92,6 +92,13 @@ export default function App() {
   const [withdrawDetails, setWithdrawDetails] = useState('');
   const [newPaymentMethod, setNewPaymentMethod] = useState({ name: '', details: '', icon: 'landmark' });
   const [profileSubView, setProfileSubView] = useState<ProfileSubView>('main');
+  const [adminTransactions, setAdminTransactions] = useState<Transaction[]>([]);
+  const [editingTx, setEditingTx] = useState<Transaction | null>(null);
+  const [editTxForm, setEditTxForm] = useState<Partial<Transaction>>({});
+  const [transferType, setTransferType] = useState<'internal' | 'external'>('internal');
+  const [extBankName, setExtBankName] = useState('');
+  const [extAccountNum, setExtAccountNum] = useState('');
+  const [extSwiftCode, setExtSwiftCode] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   // Ref to track the current user ID to prevent race conditions in async fetches
@@ -184,6 +191,11 @@ export default function App() {
         localStorage.setItem('nexus_user', JSON.stringify(userRes.data));
         setIsServerMode(true); // Successfully talking to server
       }
+
+      if (userRes.data && userRes.data.role === 'admin') {
+        const adminTxRes = await axios.get('/api/admin/transactions');
+        setAdminTransactions(adminTxRes.data);
+      }
     } catch (err: any) {
       console.error("Fetch error:", err);
       // Fallback for static/offline mode
@@ -237,6 +249,11 @@ export default function App() {
           ];
           setPaymentMethods(defaultPMs);
           localStorage.setItem('nexus_local_payment_methods', JSON.stringify(defaultPMs));
+        }
+
+        if (user?.role === 'admin') {
+          const localTxs = JSON.parse(localStorage.getItem('nexus_local_transactions') || '[]');
+          setAdminTransactions(localTxs);
         }
       }
     }
@@ -400,7 +417,7 @@ export default function App() {
             id: `tx-admin-${Math.random().toString(36).substr(2, 9)}`,
             fromUid: 'system',
             toUid: targetUid,
-            fromName: 'System Admin',
+            fromName: targetUser.displayName,
             toName: targetUser.displayName,
             amount: numAmount,
             type: type === 'add' ? 'deposit' : 'withdrawal',
@@ -489,9 +506,14 @@ export default function App() {
     try {
       const res = await axios.post('/api/transfer', {
         fromUid: user.uid,
-        toUid: recipientId,
+        toUid: transferType === 'internal' ? recipientId : 'external',
         amount: numAmount,
-        description
+        description,
+        externalBankDetails: transferType === 'external' ? {
+          bankName: extBankName,
+          accountNumber: extAccountNum,
+          swiftCode: extSwiftCode
+        } : undefined
       });
       
       if (res.data.success) {
@@ -504,6 +526,9 @@ export default function App() {
           setAmount('');
           setRecipientId('');
           setDescription('');
+          setExtBankName('');
+          setExtAccountNum('');
+          setExtSwiftCode('');
         }, 2000);
       }
     } catch (err: any) {
@@ -535,14 +560,14 @@ export default function App() {
         const newTx = {
           id: `tx-${Math.random().toString(36).substr(2, 9)}`,
           fromUid: user.uid,
-          toUid: recipientId,
+          toUid: transferType === 'internal' ? recipientId : 'external',
           fromName: fromUser.displayName,
-          toName: toUser.displayName,
+          toName: transferType === 'internal' ? (toUser?.displayName || 'Recipient') : extBankName,
           amount: numAmount,
           type: 'transfer',
-          status: 'completed',
+          status: transferType === 'internal' ? 'completed' : 'pending',
           timestamp: new Date().toISOString(),
-          description: description || 'Transfer'
+          description: description || (transferType === 'internal' ? 'Transfer' : `Transfer to ${extAccountNum}`)
         };
 
         const localTxs = JSON.parse(localStorage.getItem('nexus_local_transactions') || '[]');
@@ -563,6 +588,9 @@ export default function App() {
           setAmount('');
           setRecipientId('');
           setDescription('');
+          setExtBankName('');
+          setExtAccountNum('');
+          setExtSwiftCode('');
         }, 2000);
         return;
       }
@@ -576,21 +604,100 @@ export default function App() {
     const file = e.target.files?.[0];
     if (!file || !user) return;
 
-    const formData = new FormData();
-    formData.append('image', file);
+    setIsLoading(true);
+    try {
+      // 1. Upload to Cloudinary via server
+      const formData = new FormData();
+      formData.append('image', file);
+      
+      let photoURL = '';
+      
+      try {
+        const res = await axios.post('/api/upload-avatar', formData);
+        photoURL = res.data.url;
+        
+        // 2. Persist to User Profile in DB
+        await axios.post('/api/user/update-profile', {
+          uid: user.uid,
+          photoURL: photoURL
+        });
+      } catch (uploadErr) {
+        // Fallback for static mode: Use FileReader to create a data URL
+        photoURL = await new Promise((resolve) => {
+          const reader = new FileReader();
+          reader.onloadend = () => resolve(reader.result as string);
+          reader.readAsDataURL(file);
+        });
+        
+        // Update local storage for persistence in static mode
+        const localUsers = JSON.parse(localStorage.getItem('nexus_local_users') || '[]');
+        const targetIdx = localUsers.findIndex((u: any) => u.uid === user.uid);
+        if (targetIdx !== -1) {
+          localUsers[targetIdx].photoURL = photoURL;
+          localStorage.setItem('nexus_local_users', JSON.stringify(localUsers));
+        }
+      }
+
+      const updatedUser = { ...user, photoURL };
+      setUser(updatedUser);
+      localStorage.setItem('nexus_user', JSON.stringify(updatedUser));
+      
+      await fetchData(user.uid);
+    } catch (err) {
+      console.error("Avatar change failed:", err);
+      setError('Failed to update avatar');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  const handleAdminUpdateTx = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!editingTx || !user) return;
 
     setIsLoading(true);
     try {
-      const res = await axios.post('/api/upload-avatar', formData);
-      const updatedUser = { ...user, photoURL: res.data.url };
-      setUser(updatedUser);
-      localStorage.setItem('nexus_user', JSON.stringify(updatedUser));
-      // In a real app, you'd also update this in the backend DB
+      try {
+        await axios.post('/api/admin/transaction/update', {
+          id: editingTx.id,
+          ...editTxForm
+        });
+      } catch (err) {
+        // Static fallback
+        const localTxs = JSON.parse(localStorage.getItem('nexus_local_transactions') || '[]');
+        const idx = localTxs.findIndex((tx: any) => tx.id === editingTx.id);
+        if (idx !== -1) {
+          localTxs[idx] = { ...localTxs[idx], ...editTxForm };
+          localStorage.setItem('nexus_local_transactions', JSON.stringify(localTxs));
+        }
+      }
+      
+      setEditingTx(null);
+      setEditTxForm({});
+      await fetchData(user.uid);
     } catch (err) {
-      console.error("Upload failed:", err);
-      setError('Avatar upload failed');
+      console.error("TX Update failed:", err);
+      setError('Failed to update transaction');
     } finally {
       setIsLoading(false);
+    }
+  };
+
+  const handleAdminDeleteTx = async (id: string) => {
+    if (!user || !confirm('Delete this transaction?')) return;
+
+    try {
+      try {
+        await axios.post('/api/admin/transaction/delete', { id });
+      } catch (err) {
+        // Static fallback
+        const localTxs = JSON.parse(localStorage.getItem('nexus_local_transactions') || '[]');
+        const filtered = localTxs.filter((tx: any) => tx.id !== id);
+        localStorage.setItem('nexus_local_transactions', JSON.stringify(filtered));
+      }
+      await fetchData(user.uid);
+    } catch (err) {
+      console.error("TX Delete failed:", err);
     }
   };
 
@@ -1120,31 +1227,78 @@ export default function App() {
       </header>
 
       <main className="p-6 space-y-8">
-        <div className="space-y-4">
-          <p className="text-xs font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-widest">Select Recipient</p>
-          <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
-            {allUsers.map((u) => (
-              <button 
-                key={u.uid}
-                onClick={() => setRecipientId(u.uid)}
-                className={cn(
-                  "flex flex-col items-center gap-2 min-w-[80px] p-3 rounded-2xl transition-all border",
-                  recipientId === u.uid 
-                    ? "bg-zinc-900 dark:bg-white border-zinc-900 dark:border-white scale-105 shadow-lg" 
-                    : "bg-zinc-50 dark:bg-zinc-900 border-zinc-100 dark:border-zinc-800"
-                )}
-              >
-                <img src={u.photoURL} alt={u.displayName} className="w-12 h-12 rounded-full object-cover" />
-                <span className={cn(
-                  "text-[10px] font-bold text-center truncate w-full",
-                  recipientId === u.uid ? "text-white dark:text-black" : "text-zinc-600 dark:text-zinc-400"
-                )}>
-                  {u.displayName.split(' ')[0]}
-                </span>
-              </button>
-            ))}
-          </div>
+        <div className="flex p-1 bg-zinc-100 dark:bg-zinc-900 rounded-2xl">
+          <button 
+            onClick={() => setTransferType('internal')}
+            className={cn(
+              "flex-1 py-3 text-xs font-bold rounded-xl transition-all",
+              transferType === 'internal' ? "bg-white dark:bg-zinc-800 shadow-sm" : "text-zinc-500"
+            )}
+          >
+            Internal Transfer
+          </button>
+          <button 
+            onClick={() => setTransferType('external')}
+            className={cn(
+              "flex-1 py-3 text-xs font-bold rounded-xl transition-all",
+              transferType === 'external' ? "bg-white dark:bg-zinc-800 shadow-sm" : "text-zinc-500"
+            )}
+          >
+            External Bank
+          </button>
         </div>
+
+        {transferType === 'internal' ? (
+          <div className="space-y-4">
+            <p className="text-xs font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-widest">Select Recipient</p>
+            <div className="flex gap-4 overflow-x-auto pb-4 no-scrollbar">
+              {allUsers.map((u) => (
+                <button 
+                  key={u.uid}
+                  onClick={() => setRecipientId(u.uid)}
+                  className={cn(
+                    "flex flex-col items-center gap-2 min-w-[80px] p-3 rounded-2xl transition-all border",
+                    recipientId === u.uid 
+                      ? "bg-zinc-900 dark:bg-white border-zinc-900 dark:border-white scale-105 shadow-lg" 
+                      : "bg-zinc-50 dark:bg-zinc-900 border-zinc-100 dark:border-zinc-800"
+                  )}
+                >
+                  <img src={u.photoURL} alt={u.displayName} className="w-12 h-12 rounded-full object-cover" />
+                  <span className={cn(
+                    "text-[10px] font-bold text-center truncate w-full",
+                    recipientId === u.uid ? "text-white dark:text-black" : "text-zinc-600 dark:text-zinc-400"
+                  )}>
+                    {u.displayName.split(' ')[0]}
+                  </span>
+                </button>
+              ))}
+            </div>
+          </div>
+        ) : (
+          <div className="space-y-6">
+            <p className="text-xs font-bold text-zinc-400 dark:text-zinc-500 uppercase tracking-widest">Bank Details</p>
+            <div className="space-y-4">
+              <Input 
+                label="Bank Name" 
+                placeholder="e.g. Chase Bank" 
+                value={extBankName}
+                onChange={(e) => setExtBankName(e.target.value)}
+              />
+              <Input 
+                label="Account Number / IBAN" 
+                placeholder="Enter account number" 
+                value={extAccountNum}
+                onChange={(e) => setExtAccountNum(e.target.value)}
+              />
+              <Input 
+                label="SWIFT / BIC Code" 
+                placeholder="Optional" 
+                value={extSwiftCode}
+                onChange={(e) => setExtSwiftCode(e.target.value)}
+              />
+            </div>
+          </div>
+        )}
 
         <form onSubmit={handleTransfer} className="space-y-8">
           <div className="text-center space-y-2">
@@ -1177,9 +1331,9 @@ export default function App() {
             className="w-full py-5 text-lg rounded-2xl shadow-xl" 
             type="submit" 
             isLoading={isLoading}
-            disabled={!recipientId || !amount}
+            disabled={(!recipientId && transferType === 'internal') || (!extBankName && transferType === 'external') || !amount}
           >
-            Send Money
+            {transferType === 'internal' ? 'Send Money' : 'Initiate Transfer'}
           </Button>
         </form>
       </main>
@@ -1833,7 +1987,7 @@ export default function App() {
         </div>
 
         <div className="flex gap-2 p-1.5 bg-slate-100 dark:bg-zinc-900 rounded-2xl overflow-x-auto no-scrollbar">
-          {(['users', 'support', 'payments', 'withdrawals'] as const).map((tab) => (
+          {(['users', 'transactions', 'support', 'payments', 'withdrawals'] as const).map((tab) => (
             <button
               key={tab}
               onClick={() => setAdminActiveTab(tab)}
@@ -1986,6 +2140,128 @@ export default function App() {
                 </Card>
               ))}
             </div>
+          </section>
+        )}
+
+        {adminActiveTab === 'transactions' && (
+          <section className="space-y-4">
+            <div className="flex items-center justify-between">
+              <h4 className="font-bold text-zinc-900 dark:text-zinc-100">All Transactions</h4>
+              <p className="text-[10px] text-zinc-500 font-bold uppercase tracking-widest">{adminTransactions.length} Total</p>
+            </div>
+
+            <div className="space-y-3">
+              {adminTransactions.map((tx) => (
+                <Card key={tx.id} className="p-4 bg-white dark:bg-zinc-900 shadow-sm">
+                  <div className="flex justify-between items-start mb-2">
+                    <div>
+                      <p className="text-xs font-bold text-zinc-900 dark:text-zinc-100">{tx.fromName} → {tx.toName}</p>
+                      <p className="text-[10px] text-zinc-500">{format(new Date(tx.timestamp), 'MMM d, yyyy • h:mm a')}</p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-sm font-bold">${tx.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
+                      <span className="text-[8px] px-1.5 py-0.5 bg-zinc-100 dark:bg-zinc-800 rounded-full uppercase font-bold text-zinc-500">
+                        {tx.type}
+                      </span>
+                    </div>
+                  </div>
+                  <p className="text-xs text-zinc-600 dark:text-zinc-400 italic mb-4">"{tx.description || 'No description'}"</p>
+                  
+                  <div className="flex gap-2">
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      className="flex-1 text-[10px] h-8"
+                      onClick={() => {
+                        setEditingTx(tx);
+                        setEditTxForm({
+                          amount: tx.amount,
+                          description: tx.description,
+                          fromName: tx.fromName,
+                          toName: tx.toName,
+                          timestamp: tx.timestamp
+                        });
+                      }}
+                    >
+                      Edit
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      variant="ghost" 
+                      className="text-red-500 h-8 w-8 p-0"
+                      onClick={() => handleAdminDeleteTx(tx.id)}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
+                  </div>
+                </Card>
+              ))}
+              {adminTransactions.length === 0 && (
+                <div className="text-center py-12 bg-white dark:bg-zinc-900 rounded-3xl border border-dashed border-zinc-200">
+                  <p className="text-sm text-zinc-400">No transactions found</p>
+                </div>
+              )}
+            </div>
+
+            {/* Edit Transaction Modal */}
+            <AnimatePresence>
+              {editingTx && (
+                <motion.div 
+                  initial={{ opacity: 0 }}
+                  animate={{ opacity: 1 }}
+                  exit={{ opacity: 0 }}
+                  className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-6"
+                >
+                  <motion.div 
+                    initial={{ scale: 0.9, y: 20 }}
+                    animate={{ scale: 1, y: 0 }}
+                    className="bg-white dark:bg-zinc-900 rounded-[2.5rem] p-8 w-full max-w-sm shadow-2xl space-y-6 overflow-y-auto max-h-[90vh]"
+                  >
+                    <div className="flex justify-between items-center">
+                      <h3 className="text-xl font-display font-bold text-zinc-900 dark:text-zinc-100">Edit Transaction</h3>
+                      <button onClick={() => setEditingTx(null)} className="p-2 text-zinc-400">
+                        <Plus className="rotate-45" />
+                      </button>
+                    </div>
+
+                    <form onSubmit={handleAdminUpdateTx} className="space-y-4">
+                      <Input 
+                        label="Amount" 
+                        type="number" 
+                        value={editTxForm.amount}
+                        onChange={(e) => setEditTxForm({ ...editTxForm, amount: parseFloat(e.target.value) })}
+                      />
+                      <Input 
+                        label="From Name" 
+                        value={editTxForm.fromName}
+                        onChange={(e) => setEditTxForm({ ...editTxForm, fromName: e.target.value })}
+                      />
+                      <Input 
+                        label="To Name" 
+                        value={editTxForm.toName}
+                        onChange={(e) => setEditTxForm({ ...editTxForm, toName: e.target.value })}
+                      />
+                      <Input 
+                        label="Description" 
+                        value={editTxForm.description}
+                        onChange={(e) => setEditTxForm({ ...editTxForm, description: e.target.value })}
+                      />
+                      <Input 
+                        label="Date/Time" 
+                        type="datetime-local"
+                        value={editTxForm.timestamp ? new Date(editTxForm.timestamp).toISOString().slice(0, 16) : ''}
+                        onChange={(e) => setEditTxForm({ ...editTxForm, timestamp: new Date(e.target.value).toISOString() })}
+                      />
+                      
+                      <div className="pt-4 flex gap-2">
+                        <Button type="submit" className="flex-1" isLoading={isLoading}>Save Changes</Button>
+                        <Button variant="ghost" onClick={() => setEditingTx(null)} type="button">Cancel</Button>
+                      </div>
+                    </form>
+                  </motion.div>
+                </motion.div>
+              )}
+            </AnimatePresence>
           </section>
         )}
 
