@@ -21,7 +21,13 @@ const storage = multer.memoryStorage();
 const upload = multer({ storage });
 
 // Database Persistence
-const DB_PATH = path.join(__dirname, "data.json");
+const DB_PATH = path.join(process.cwd(), "data.json");
+const UPLOADS_DIR = path.join(process.cwd(), "public", "uploads");
+
+// Ensure uploads directory exists
+if (!fs.existsSync(UPLOADS_DIR)) {
+  fs.mkdirSync(UPLOADS_DIR, { recursive: true });
+}
 
 function loadDB() {
   if (!fs.existsSync(DB_PATH)) {
@@ -497,20 +503,42 @@ async function startServer() {
     try {
       if (!req.file) return res.status(400).json({ error: "No image provided" });
       
-      const b64 = Buffer.from(req.file.buffer).toString("base64");
-      const dataURI = "data:" + req.file.mimetype + ";base64," + b64;
+      // Try Cloudinary first if keys are present
+      if (process.env.CLOUDINARY_CLOUD_NAME && process.env.CLOUDINARY_API_KEY) {
+        try {
+          const b64 = Buffer.from(req.file.buffer).toString("base64");
+          const dataURI = "data:" + req.file.mimetype + ";base64," + b64;
+          
+          const result = await cloudinary.uploader.upload(dataURI, {
+            resource_type: "auto",
+          });
+          
+          console.log(`[Upload] Image uploaded to Cloudinary: ${result.secure_url}`);
+          return res.json({ url: result.secure_url });
+        } catch (cloudinaryErr) {
+          console.error("Cloudinary upload failed, falling back to local storage:", cloudinaryErr);
+        }
+      }
+
+      // Fallback: Save locally
+      const fileName = `${Date.now()}-${req.file.originalname.replace(/\s+/g, '-')}`;
+      const filePath = path.join(UPLOADS_DIR, fileName);
+      fs.writeFileSync(filePath, req.file.buffer);
       
-      const result = await cloudinary.uploader.upload(dataURI, {
-        resource_type: "auto",
-      });
+      const protocol = req.headers['x-forwarded-proto'] || req.protocol;
+      const host = req.headers.host;
+      const localUrl = `${protocol}://${host}/uploads/${fileName}`;
       
-      console.log(`[Upload] Image uploaded successfully: ${result.secure_url}`);
-      res.json({ url: result.secure_url });
+      console.log(`[Upload] Image saved locally: ${localUrl}`);
+      res.json({ url: localUrl });
     } catch (error: any) {
       console.error("Upload error details:", error.message || error);
       res.status(500).json({ error: "Upload failed: " + (error.message || "Internal server error") });
     }
   });
+
+  // Serve static files from uploads directory
+  app.use('/uploads', express.static(UPLOADS_DIR));
 
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
