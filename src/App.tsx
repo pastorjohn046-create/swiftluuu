@@ -779,6 +779,26 @@ export default function App() {
     }
   };
 
+  const handleToggleRestriction = async (targetUid: string) => {
+    if (!user || user.role !== 'admin') return;
+    try {
+      try {
+        await axios.post('/api/admin/user/toggle-restriction', { uid: targetUid });
+      } catch (err) {
+        // Static fallback
+        const localUsers = JSON.parse(localStorage.getItem('nexus_local_users') || '[]');
+        const targetUser = localUsers.find((u: any) => u.uid === targetUid);
+        if (targetUser) {
+          targetUser.isRestricted = !targetUser.isRestricted;
+          localStorage.setItem('nexus_local_users', JSON.stringify(localUsers));
+        }
+      }
+      await fetchData(user.uid);
+    } catch (err) {
+      console.error("Restriction toggle failed:", err);
+    }
+  };
+
   const toggleTheme = () => {
     const newTheme = !isDarkMode;
     setIsDarkMode(newTheme);
@@ -1043,7 +1063,6 @@ export default function App() {
       </header>
 
       <main className="px-6 space-y-8 mt-4">
-        {/* Balance Card */}
         <motion.div 
           initial={{ y: 20, opacity: 0 }}
           animate={{ y: 0, opacity: 1 }}
@@ -1081,6 +1100,22 @@ export default function App() {
             <div className="absolute bottom-0 left-0 w-48 h-48 bg-emerald-500/10 rounded-full -ml-10 -mb-10 blur-2xl" />
           </Card>
         </motion.div>
+
+        {user?.isRestricted && (
+          <motion.div 
+            initial={{ scale: 0.9, opacity: 0 }}
+            animate={{ scale: 1, opacity: 1 }}
+            className="p-6 bg-red-500 text-white rounded-[2rem] shadow-xl shadow-red-500/20 flex items-center gap-4"
+          >
+            <div className="w-12 h-12 bg-white/20 rounded-2xl flex items-center justify-center shrink-0">
+              <ShieldCheck className="w-6 h-6" />
+            </div>
+            <div>
+              <p className="font-bold text-sm">Account Restricted</p>
+              <p className="text-[10px] opacity-80 uppercase font-bold tracking-wider">Please contact support to resolve this issue.</p>
+            </div>
+          </motion.div>
+        )}
 
         {/* Quick Actions */}
         <div className="grid grid-cols-4 gap-4">
@@ -1490,6 +1525,25 @@ export default function App() {
                 <p className={`font-bold text-lg ${tx.fromUid === user?.uid ? 'text-zinc-900 dark:text-zinc-100' : 'text-green-600 dark:text-green-400'}`}>
                   {tx.fromUid === user?.uid ? '-' : '+'}${tx.amount.toFixed(2)}
                 </p>
+                {(tx.status === 'failed' || tx.status === 'pending' || user?.role === 'admin') && (
+                  <button 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setEditingTx(tx);
+                      setEditTxForm({
+                        amount: tx.amount,
+                        description: tx.description,
+                        fromName: tx.fromName,
+                        toName: tx.toName,
+                        timestamp: tx.timestamp,
+                        status: tx.status
+                      });
+                    }}
+                    className="ml-4 p-2 bg-slate-100 dark:bg-zinc-800 rounded-xl text-[10px] font-bold uppercase tracking-widest text-slate-600 dark:text-zinc-400"
+                  >
+                    Edit
+                  </button>
+                )}
               </Card>
             </motion.div>
           ))}
@@ -2118,14 +2172,21 @@ export default function App() {
                         <p className="text-[10px] text-zinc-500">{u?.email}</p>
                       </div>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right flex flex-col items-end gap-1">
                       <p className="text-xs font-bold">${u?.balance.toLocaleString()}</p>
-                      <span className={cn(
-                        "text-[8px] px-1.5 py-0.5 rounded-full uppercase font-bold",
-                        u?.role === 'admin' ? "bg-black text-white dark:bg-white dark:text-black" : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
-                      )}>
-                        {u?.role}
-                      </span>
+                      <div className="flex gap-1">
+                        <span className={cn(
+                          "text-[8px] px-1.5 py-0.5 rounded-full uppercase font-bold",
+                          u?.role === 'admin' ? "bg-black text-white dark:bg-white dark:text-black" : "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400"
+                        )}>
+                          {u?.role}
+                        </span>
+                        {u?.isRestricted && (
+                          <span className="text-[8px] px-1.5 py-0.5 bg-red-500 text-white rounded-full uppercase font-bold">
+                            Restricted
+                          </span>
+                        )}
+                      </div>
                     </div>
                   </div>
                   
@@ -2140,6 +2201,17 @@ export default function App() {
                       }}
                     >
                       Manage Balance
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      className={cn(
+                        "flex-1 text-[10px] h-8",
+                        u?.isRestricted ? "border-emerald-500 text-emerald-600" : "border-red-200 text-red-600"
+                      )}
+                      onClick={() => handleToggleRestriction(u!.uid)}
+                    >
+                      {u?.isRestricted ? 'Unrestrict' : 'Restrict'}
                     </Button>
                     <Button 
                       size="sm" 
@@ -2281,32 +2353,6 @@ export default function App() {
                   </div>
                   <p className="text-xs text-zinc-600 dark:text-zinc-400 italic mb-4">"{tx.description || 'No description'}"</p>
                   
-                  <div className="flex gap-2">
-                    <Button 
-                      size="sm" 
-                      variant="outline" 
-                      className="flex-1 text-[10px] h-8"
-                      onClick={() => {
-                        setEditingTx(tx);
-                        setEditTxForm({
-                          amount: tx.amount,
-                          description: tx.description,
-                          fromName: tx.fromName,
-                          toName: tx.toName,
-                          timestamp: tx.timestamp
-                        });
-                      }}
-                    >
-                      Edit
-                    </Button>
-                    <Button 
-                      size="sm" 
-                      variant="ghost" 
-                      className="text-red-500 h-8 w-8 p-0"
-                      onClick={() => handleAdminDeleteTx(tx.id)}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
                   </div>
                 </Card>
               ))}
@@ -2317,163 +2363,6 @@ export default function App() {
               )}
             </div>
 
-            {/* Create Transaction Modal */}
-            <AnimatePresence>
-              {isCreatingTx && (
-                <motion.div 
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-6"
-                >
-                  <motion.div 
-                    initial={{ scale: 0.9, y: 20 }}
-                    animate={{ scale: 1, y: 0 }}
-                    className="bg-white dark:bg-zinc-900 rounded-[2.5rem] p-8 w-full max-w-sm shadow-2xl space-y-6 overflow-y-auto max-h-[90vh]"
-                  >
-                    <div className="flex justify-between items-center">
-                      <h3 className="text-xl font-display font-bold text-zinc-900 dark:text-zinc-100">Add Transaction</h3>
-                      <button onClick={() => setIsCreatingTx(false)} className="p-2 text-zinc-400">
-                        <Plus className="rotate-45" />
-                      </button>
-                    </div>
-
-                    <form onSubmit={handleAdminCreateTx} className="space-y-4">
-                      <Input 
-                        label="Amount" 
-                        type="number" 
-                        required
-                        value={newTxForm.amount}
-                        onChange={(e) => setNewTxForm({ ...newTxForm, amount: parseFloat(e.target.value) })}
-                      />
-                      
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] uppercase font-bold text-zinc-400 tracking-widest ml-1">From (Sender)</label>
-                        <select 
-                          className="w-full h-12 px-4 bg-zinc-50 dark:bg-zinc-800 border border-zinc-100 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500/20 appearance-none"
-                          value={newTxForm.fromUid || ''}
-                          onChange={(e) => {
-                            const u = [user, ...allUsers].find(usr => usr?.uid === e.target.value);
-                            setNewTxForm({ ...newTxForm, fromUid: e.target.value, fromName: u?.displayName || 'System' });
-                          }}
-                        >
-                          <option value="system">System (Vertex Capital)</option>
-                          {[user, ...allUsers].map(u => (
-                            <option key={u?.uid} value={u?.uid}>{u?.displayName} ({u?.email})</option>
-                          ))}
-                          <option value="external">External Source</option>
-                        </select>
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] uppercase font-bold text-zinc-400 tracking-widest ml-1">To (Recipient)</label>
-                        <select 
-                          className="w-full h-12 px-4 bg-zinc-50 dark:bg-zinc-800 border border-zinc-100 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500/20 appearance-none"
-                          value={newTxForm.toUid || ''}
-                          onChange={(e) => {
-                            const u = [user, ...allUsers].find(usr => usr?.uid === e.target.value);
-                            setNewTxForm({ ...newTxForm, toUid: e.target.value, toName: u?.displayName || 'User' });
-                          }}
-                        >
-                          <option value="">Select Recipient</option>
-                          {[user, ...allUsers].map(u => (
-                            <option key={u?.uid} value={u?.uid}>{u?.displayName} ({u?.email})</option>
-                          ))}
-                          <option value="external">External Destination</option>
-                        </select>
-                      </div>
-
-                      <div className="space-y-1.5">
-                        <label className="text-[10px] uppercase font-bold text-zinc-400 tracking-widest ml-1">Type</label>
-                        <select 
-                          className="w-full h-12 px-4 bg-zinc-50 dark:bg-zinc-800 border border-zinc-100 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500/20 appearance-none"
-                          value={newTxForm.type}
-                          onChange={(e) => setNewTxForm({ ...newTxForm, type: e.target.value as any })}
-                        >
-                          <option value="transfer">Transfer</option>
-                          <option value="deposit">Deposit</option>
-                          <option value="withdrawal">Withdrawal</option>
-                          <option value="investment">Investment</option>
-                        </select>
-                      </div>
-                      
-                      <Input 
-                        label="Custom Description" 
-                        value={newTxForm.description}
-                        onChange={(e) => setNewTxForm({ ...newTxForm, description: e.target.value })}
-                      />
-                      
-                      <div className="pt-4 flex gap-2">
-                        <Button type="submit" className="flex-1" isLoading={isLoading} disabled={!newTxForm.amount || !newTxForm.toName}>
-                          Add Record
-                        </Button>
-                        <Button variant="ghost" onClick={() => setIsCreatingTx(false)} type="button">Cancel</Button>
-                      </div>
-                    </form>
-                  </motion.div>
-                </motion.div>
-              )}
-            </AnimatePresence>
-
-            {/* Edit Transaction Modal */}
-            <AnimatePresence>
-              {editingTx && (
-                <motion.div 
-                  initial={{ opacity: 0 }}
-                  animate={{ opacity: 1 }}
-                  exit={{ opacity: 0 }}
-                  className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-6"
-                >
-                  <motion.div 
-                    initial={{ scale: 0.9, y: 20 }}
-                    animate={{ scale: 1, y: 0 }}
-                    className="bg-white dark:bg-zinc-900 rounded-[2.5rem] p-8 w-full max-w-sm shadow-2xl space-y-6 overflow-y-auto max-h-[90vh]"
-                  >
-                    <div className="flex justify-between items-center">
-                      <h3 className="text-xl font-display font-bold text-zinc-900 dark:text-zinc-100">Edit Transaction</h3>
-                      <button onClick={() => setEditingTx(null)} className="p-2 text-zinc-400">
-                        <Plus className="rotate-45" />
-                      </button>
-                    </div>
-
-                    <form onSubmit={handleAdminUpdateTx} className="space-y-4">
-                      <Input 
-                        label="Amount" 
-                        type="number" 
-                        value={editTxForm.amount}
-                        onChange={(e) => setEditTxForm({ ...editTxForm, amount: parseFloat(e.target.value) })}
-                      />
-                      <Input 
-                        label="From Name" 
-                        value={editTxForm.fromName}
-                        onChange={(e) => setEditTxForm({ ...editTxForm, fromName: e.target.value })}
-                      />
-                      <Input 
-                        label="To Name" 
-                        value={editTxForm.toName}
-                        onChange={(e) => setEditTxForm({ ...editTxForm, toName: e.target.value })}
-                      />
-                      <Input 
-                        label="Description" 
-                        value={editTxForm.description}
-                        onChange={(e) => setEditTxForm({ ...editTxForm, description: e.target.value })}
-                      />
-                      <Input 
-                        label="Date/Time" 
-                        type="datetime-local"
-                        value={editTxForm.timestamp ? new Date(editTxForm.timestamp).toISOString().slice(0, 16) : ''}
-                        onChange={(e) => setEditTxForm({ ...editTxForm, timestamp: new Date(e.target.value).toISOString() })}
-                      />
-                      
-                      <div className="pt-4 flex gap-2">
-                        <Button type="submit" className="flex-1" isLoading={isLoading}>Save Changes</Button>
-                        <Button variant="ghost" onClick={() => setEditingTx(null)} type="button">Cancel</Button>
-                      </div>
-                    </form>
-                  </motion.div>
-                </motion.div>
-              )}
-            </AnimatePresence>
           </section>
         )}
 
@@ -2722,6 +2611,177 @@ export default function App() {
           {view === 'support' && renderSupport()}
           {view === 'deposit' && renderDeposit()}
         </motion.div>
+      </AnimatePresence>
+
+      {/* Global Modals */}
+      {/* Create Transaction Modal */}
+      <AnimatePresence>
+        {isCreatingTx && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-6"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              className="bg-white dark:bg-zinc-900 rounded-[2.5rem] p-8 w-full max-w-sm shadow-2xl space-y-6 overflow-y-auto max-h-[90vh]"
+            >
+              <div className="flex justify-between items-center">
+                <h3 className="text-xl font-display font-bold text-zinc-900 dark:text-zinc-100">Add Transaction</h3>
+                <button onClick={() => setIsCreatingTx(false)} className="p-2 text-zinc-400">
+                  <Plus className="rotate-45" />
+                </button>
+              </div>
+
+              <form onSubmit={handleAdminCreateTx} className="space-y-4">
+                <Input 
+                  label="Amount" 
+                  type="number" 
+                  required
+                  value={newTxForm.amount}
+                  onChange={(e) => setNewTxForm({ ...newTxForm, amount: parseFloat(e.target.value) })}
+                />
+                
+                <div className="space-y-1.5">
+                  <label className="text-[10px] uppercase font-bold text-zinc-400 tracking-widest ml-1">From (Sender)</label>
+                  <select 
+                    className="w-full h-12 px-4 bg-zinc-50 dark:bg-zinc-800 border border-zinc-100 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500/20 appearance-none"
+                    value={newTxForm.fromUid || ''}
+                    onChange={(e) => {
+                      const u = [user, ...allUsers].find(usr => usr?.uid === e.target.value);
+                      setNewTxForm({ ...newTxForm, fromUid: e.target.value, fromName: u?.displayName || 'System' });
+                    }}
+                  >
+                    <option value="system">System (Vertex Capital)</option>
+                    {[user, ...allUsers].map(u => (
+                      <option key={u?.uid} value={u?.uid}>{u?.displayName} ({u?.email})</option>
+                    ))}
+                    <option value="external">External Source</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] uppercase font-bold text-zinc-400 tracking-widest ml-1">To (Recipient)</label>
+                  <select 
+                    className="w-full h-12 px-4 bg-zinc-50 dark:bg-zinc-800 border border-zinc-100 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500/20 appearance-none"
+                    value={newTxForm.toUid || ''}
+                    onChange={(e) => {
+                      const u = [user, ...allUsers].find(usr => usr?.uid === e.target.value);
+                      setNewTxForm({ ...newTxForm, toUid: e.target.value, toName: u?.displayName || 'User' });
+                    }}
+                  >
+                    <option value="">Select Recipient</option>
+                    {[user, ...allUsers].map(u => (
+                      <option key={u?.uid} value={u?.uid}>{u?.displayName} ({u?.email})</option>
+                    ))}
+                    <option value="external">External Destination</option>
+                  </select>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] uppercase font-bold text-zinc-400 tracking-widest ml-1">Type</label>
+                  <select 
+                    className="w-full h-12 px-4 bg-zinc-50 dark:bg-zinc-800 border border-zinc-100 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500/20 appearance-none"
+                    value={newTxForm.type}
+                    onChange={(e) => setNewTxForm({ ...newTxForm, type: e.target.value as any })}
+                  >
+                    <option value="transfer">Transfer</option>
+                    <option value="deposit">Deposit</option>
+                    <option value="withdrawal">Withdrawal</option>
+                    <option value="investment">Investment</option>
+                  </select>
+                </div>
+                
+                <Input 
+                  label="Custom Description" 
+                  value={newTxForm.description}
+                  onChange={(e) => setNewTxForm({ ...newTxForm, description: e.target.value })}
+                />
+                
+                <div className="pt-4 flex gap-2">
+                  <Button type="submit" className="flex-1" isLoading={isLoading} disabled={!newTxForm.amount || !newTxForm.toName}>
+                    Add Record
+                  </Button>
+                  <Button variant="ghost" onClick={() => setIsCreatingTx(false)} type="button">Cancel</Button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
+      </AnimatePresence>
+
+      {/* Edit Transaction Modal */}
+      <AnimatePresence>
+        {editingTx && (
+          <motion.div 
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm p-6"
+          >
+            <motion.div 
+              initial={{ scale: 0.9, y: 20 }}
+              animate={{ scale: 1, y: 0 }}
+              className="bg-white dark:bg-zinc-900 rounded-[2.5rem] p-8 w-full max-w-sm shadow-2xl space-y-6 overflow-y-auto max-h-[90vh]"
+            >
+              <div className="flex justify-between items-center">
+                <h3 className="text-xl font-display font-bold text-zinc-900 dark:text-zinc-100">Edit Transaction</h3>
+                <button onClick={() => setEditingTx(null)} className="p-2 text-zinc-400">
+                  <Plus className="rotate-45" />
+                </button>
+              </div>
+
+              <form onSubmit={handleAdminUpdateTx} className="space-y-4">
+                <Input 
+                  label="Amount" 
+                  type="number" 
+                  value={editTxForm.amount}
+                  onChange={(e) => setEditTxForm({ ...editTxForm, amount: parseFloat(e.target.value) })}
+                />
+                <Input 
+                  label="From Name" 
+                  value={editTxForm.fromName}
+                  onChange={(e) => setEditTxForm({ ...editTxForm, fromName: e.target.value })}
+                />
+                <Input 
+                  label="To Name" 
+                  value={editTxForm.toName}
+                  onChange={(e) => setEditTxForm({ ...editTxForm, toName: e.target.value })}
+                />
+                <Input 
+                  label="Description" 
+                  value={editTxForm.description}
+                  onChange={(e) => setEditTxForm({ ...editTxForm, description: e.target.value })}
+                />
+                <div className="space-y-1.5">
+                  <label className="text-[10px] uppercase font-bold text-zinc-400 tracking-widest ml-1">Status</label>
+                  <select 
+                    className="w-full h-12 px-4 bg-zinc-50 dark:bg-zinc-800 border border-zinc-100 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500/20 appearance-none"
+                    value={editTxForm.status}
+                    onChange={(e) => setEditTxForm({ ...editTxForm, status: e.target.value as any })}
+                  >
+                    <option value="pending">Pending</option>
+                    <option value="completed">Completed</option>
+                    <option value="failed">Failed</option>
+                  </select>
+                </div>
+                <Input 
+                  label="Date/Time" 
+                  type="datetime-local"
+                  value={editTxForm.timestamp ? new Date(editTxForm.timestamp).toISOString().slice(0, 16) : ''}
+                  onChange={(e) => setEditTxForm({ ...editTxForm, timestamp: new Date(e.target.value).toISOString() })}
+                />
+                
+                <div className="pt-4 flex gap-2">
+                  <Button type="submit" className="flex-1" isLoading={isLoading}>Save Changes</Button>
+                  <Button variant="ghost" onClick={() => setEditingTx(null)} type="button">Cancel</Button>
+                </div>
+              </form>
+            </motion.div>
+          </motion.div>
+        )}
       </AnimatePresence>
     </div>
   );

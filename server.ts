@@ -41,7 +41,8 @@ function loadDB() {
           balance: 10000.00,
           createdAt: new Date().toISOString(),
           theme: 'light',
-          role: 'admin'
+          role: 'admin',
+          isRestricted: false
         }
       ],
       transactions: [],
@@ -119,7 +120,8 @@ async function startServer() {
       balance: 10000.00,
       createdAt: new Date().toISOString(),
       theme: 'light',
-      role: email === 'vertexcapitalbankingfinanceltd@gmail.com' ? 'admin' : 'user'
+      role: email === 'vertexcapitalbankingfinanceltd@gmail.com' ? 'admin' : 'user',
+      isRestricted: false
     };
     db.users.push(newUser);
     saveDB();
@@ -127,7 +129,7 @@ async function startServer() {
   });
 
   app.get("/api/users", (req, res) => {
-    res.json(db.users.map(u => ({ uid: u.uid, displayName: u.displayName, photoURL: u.photoURL, email: u.email, balance: u.balance, role: u.role, createdAt: u.createdAt })));
+    res.json(db.users.map(u => ({ uid: u.uid, displayName: u.displayName, photoURL: u.photoURL, email: u.email, balance: u.balance, role: u.role, createdAt: u.createdAt, isRestricted: u.isRestricted })));
   });
 
   app.get("/api/user/:uid", (req, res) => {
@@ -233,6 +235,16 @@ async function startServer() {
     db.users.splice(index, 1);
     saveDB();
     res.json({ success: true });
+  });
+
+  app.post("/api/admin/user/toggle-restriction", (req, res) => {
+    const { uid } = req.body;
+    const user = db.users.find(u => u.uid === uid);
+    if (!user) return res.status(404).json({ error: "User not found" });
+    
+    user.isRestricted = !user.isRestricted;
+    saveDB();
+    res.json({ success: true, isRestricted: user.isRestricted });
   });
 
   // Support Routes

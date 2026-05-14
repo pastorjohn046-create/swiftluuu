@@ -7,6 +7,7 @@ export interface UserProfile {
   createdAt: string;
   theme?: 'light' | 'dark';
   role?: 'user' | 'admin';
+  isRestricted?: boolean;
 }
 
 export type TransactionType = 'transfer' | 'deposit' | 'withdrawal';
