@@ -90,6 +90,22 @@ async function startServer() {
   app.use(bodyParser.urlencoded({ limit: '10mb', extended: true }));
 
   // API Routes
+  const adminMiddleware = (req: express.Request, res: express.Response, next: express.NextFunction) => {
+    const adminEmail = req.headers['admin-email'];
+    const adminPassword = req.headers['admin-password'];
+    const ADMIN_EMAIL = 'vertexcapitalbankingfinanceltd@gmail.com';
+    const ADMIN_PASSWORD = 'vertexcapitalbankingfinanceltd@gmail.com';
+
+    if (adminEmail === ADMIN_EMAIL && adminPassword === ADMIN_PASSWORD) {
+      next();
+    } else {
+      console.warn(`[Security] Unauthorized admin access attempt from ${req.ip}`);
+      res.status(403).json({ error: "Unauthorized: Admin access required." });
+    }
+  };
+
+  app.use("/api/admin", adminMiddleware);
+
   app.post("/api/login", (req, res) => {
     const { email, password } = req.body;
     const ADMIN_EMAIL = 'vertexcapitalbankingfinanceltd@gmail.com';
@@ -140,7 +156,11 @@ async function startServer() {
     res.json(newUser);
   });
 
-  app.get("/api/users", (req, res) => {
+  app.get("/api/users/public", (req, res) => {
+    res.json(db.users.map(u => ({ uid: u.uid, displayName: u.displayName, photoURL: u.photoURL })));
+  });
+
+  app.get("/api/admin/users", (req, res) => {
     res.json(db.users.map(u => ({ uid: u.uid, displayName: u.displayName, photoURL: u.photoURL, email: u.email, balance: u.balance, role: u.role, createdAt: u.createdAt, isRestricted: u.isRestricted })));
   });
 
@@ -260,8 +280,13 @@ async function startServer() {
   });
 
   // Support Routes
-  app.get("/api/support/messages", (req, res) => {
+  app.get("/api/admin/support/messages", (req, res) => {
     res.json(db.messages);
+  });
+
+  app.get("/api/support/messages/:uid", (req, res) => {
+    const { uid } = req.params;
+    res.json(db.messages.filter(m => m.userId === uid));
   });
 
   app.post("/api/support/send", (req, res) => {

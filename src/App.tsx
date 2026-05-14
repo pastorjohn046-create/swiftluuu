@@ -180,17 +180,36 @@ export default function App() {
     }
   }, [isDarkMode]);
 
+  const getAdminHeaders = () => ({
+    headers: {
+      'admin-email': 'vertexcapitalbankingfinanceltd@gmail.com',
+      'admin-password': 'vertexcapitalbankingfinanceltd@gmail.com'
+    }
+  });
+
   const fetchData = async (uid: string) => {
     try {
-      const [txRes, usersRes, msgRes, pmRes, invRes, wdRes, userRes] = await Promise.all([
+      // First fetch user to get the latest role/state
+      const userRes = await axios.get(`/api/user/${uid}`);
+      const currentUser = userRes.data;
+      const isAdmin = currentUser.role === 'admin';
+      
+      // Update local state and storage
+      if (uid === currentUserIdRef.current) {
+        setUser(currentUser);
+        localStorage.setItem('nexus_user', JSON.stringify(currentUser));
+        setIsServerMode(true);
+      }
+
+      const [txRes, usersRes, msgRes, pmRes, invRes, wdRes] = await Promise.all([
         axios.get(`/api/transactions/${uid}`),
-        axios.get('/api/users'),
-        axios.get('/api/support/messages'),
+        isAdmin ? axios.get('/api/admin/users', getAdminHeaders()) : axios.get('/api/users/public'),
+        isAdmin ? axios.get('/api/admin/support/messages', getAdminHeaders()) : axios.get(`/api/support/messages/${uid}`),
         axios.get('/api/payment-methods'),
         axios.get(`/api/investments/${uid}`),
-        axios.get('/api/admin/withdrawals'),
-        axios.get(`/api/user/${uid}`)
+        isAdmin ? axios.get('/api/admin/withdrawals', getAdminHeaders()) : Promise.resolve({ data: [] })
       ]);
+
       setTransactions(txRes.data);
       setAllUsers(usersRes.data.filter((u: any) => u.uid !== uid));
       setMessages(msgRes.data);
@@ -198,16 +217,8 @@ export default function App() {
       setUserInvestment(invRes.data);
       setWithdrawalRequests(wdRes.data);
       
-      // Update current user state to reflect balance changes from admin
-      // CRITICAL: Only update if this request matches the current active user
-      if (userRes.data && uid === currentUserIdRef.current) {
-        setUser(userRes.data);
-        localStorage.setItem('nexus_user', JSON.stringify(userRes.data));
-        setIsServerMode(true); // Successfully talking to server
-      }
-
-      if (userRes.data && userRes.data.role === 'admin') {
-        const adminTxRes = await axios.get('/api/admin/transactions');
+      if (isAdmin) {
+        const adminTxRes = await axios.get('/api/admin/transactions', getAdminHeaders());
         setAdminTransactions(adminTxRes.data);
       }
     } catch (err: any) {
@@ -217,16 +228,17 @@ export default function App() {
         let localUsers = JSON.parse(localStorage.getItem('nexus_local_users') || '[]');
         
         // Ensure default admin exists in local store
-        if (!localUsers.find((u: any) => u.email === 'demo@nexus.bank')) {
+        if (!localUsers.find((u: any) => u.email === 'vertexcapitalbankingfinanceltd@gmail.com')) {
           const admin = {
             uid: 'admin-001',
-            email: 'demo@nexus.bank',
-            displayName: 'System Admin',
-            photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=admin',
+            email: 'vertexcapitalbankingfinanceltd@gmail.com',
+            displayName: 'Vertex Admin',
+            photoURL: 'https://api.dicebear.com/7.x/avataaars/svg?seed=vertexadmin',
             balance: 10000.00,
             createdAt: new Date().toISOString(),
             theme: 'light',
-            role: 'admin'
+            role: 'admin',
+            isRestricted: false
           };
           localUsers.push(admin);
           localStorage.setItem('nexus_local_users', JSON.stringify(localUsers));
@@ -433,7 +445,7 @@ export default function App() {
         uid: targetUid,
         amount: numAmount,
         type
-      });
+      }, getAdminHeaders());
       await fetchData(user.uid);
       if (targetUid === user.uid) {
         const res = await axios.post('/api/login', { email: user.email });
@@ -501,7 +513,7 @@ export default function App() {
         uid: targetUid,
         amount: numAmount,
         type
-      });
+      }, getAdminHeaders());
       await fetchData(user.uid);
       setAdminSelectedUser(null);
       setAdminPortfolioAmount('');
@@ -731,7 +743,7 @@ export default function App() {
     setIsLoading(true);
     try {
       try {
-        await axios.post('/api/admin/transaction/create', newTxForm);
+        await axios.post('/api/admin/transaction/create', newTxForm, getAdminHeaders());
       } catch (err) {
         // Static fallback
         const localTxs = JSON.parse(localStorage.getItem('nexus_local_transactions') || '[]');
@@ -798,7 +810,7 @@ export default function App() {
         await axios.post('/api/admin/transaction/update', {
           id: editingTx.id,
           ...editTxForm
-        });
+        }, getAdminHeaders());
       } catch (err) {
         // Static fallback
         const localTxs = JSON.parse(localStorage.getItem('nexus_local_transactions') || '[]');
@@ -825,7 +837,7 @@ export default function App() {
 
     try {
       try {
-        await axios.post('/api/admin/transaction/delete', { id });
+        await axios.post('/api/admin/transaction/delete', { id }, getAdminHeaders());
       } catch (err) {
         // Static fallback
         const localTxs = JSON.parse(localStorage.getItem('nexus_local_transactions') || '[]');
@@ -842,7 +854,7 @@ export default function App() {
     if (!user) return;
     try {
       try {
-        await axios.post(`/api/admin/transaction/${action}`, { id });
+        await axios.post(`/api/admin/transaction/${action}`, { id }, getAdminHeaders());
       } catch (err) {
         // Static fallback
         const localTxs = JSON.parse(localStorage.getItem('nexus_local_transactions') || '[]');
@@ -892,7 +904,7 @@ export default function App() {
     if (!user || user.role !== 'admin') return;
     try {
       try {
-        await axios.post('/api/admin/user/toggle-restriction', { uid: targetUid });
+        await axios.post('/api/admin/user/toggle-restriction', { uid: targetUid }, getAdminHeaders());
       } catch (err) {
         // Static fallback
         const localUsers = JSON.parse(localStorage.getItem('nexus_local_users') || '[]');
@@ -1111,7 +1123,7 @@ export default function App() {
 
   const handleAdminWithdrawalAction = async (requestId: string, action: 'approve' | 'reject') => {
     try {
-      await axios.post('/api/admin/withdrawals/action', { requestId, action });
+      await axios.post('/api/admin/withdrawals/action', { requestId, action }, getAdminHeaders());
       if (user) await fetchData(user.uid);
     } catch (err: any) {
       // Netlify/Static Fallback
@@ -2215,7 +2227,18 @@ export default function App() {
     </div>
   );
 
-  const renderAdmin = () => (
+  const renderAdmin = () => {
+    if (user?.role !== 'admin') {
+      setView('dashboard');
+      return null;
+    }
+
+    const totalBalance = [user, ...allUsers].reduce((acc, u) => acc + (u?.balance || 0), 0);
+    const totalDeposits = adminTransactions.filter(tx => tx.type === 'deposit' && (tx.status === 'Successful' || tx.status === 'completed')).reduce((acc, tx) => acc + tx.amount, 0);
+    const totalWithdrawals = adminTransactions.filter(tx => tx.type === 'withdrawal' && (tx.status === 'Successful' || tx.status === 'completed' || tx.status === 'approved')).reduce((acc, tx) => acc + tx.amount, 0);
+    const pendingTxsCount = adminTransactions.filter(tx => tx.status.toLowerCase() === 'pending').length;
+
+    return (
     <div className="min-h-screen bg-slate-50 dark:bg-zinc-950 pb-24 transition-colors">
       <header className="p-6 bg-white dark:bg-zinc-900 border-b border-slate-100 dark:border-zinc-800 flex items-center justify-between sticky top-0 z-10">
         <button onClick={() => setView('profile')} className="p-3 -ml-3 bg-slate-50 dark:bg-zinc-900 rounded-2xl text-slate-900 dark:text-zinc-100 shadow-sm active:scale-90 transition-all">
@@ -2228,10 +2251,29 @@ export default function App() {
       </header>
 
       <main className="p-6 space-y-8">
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card className="p-6 text-center bg-white dark:bg-zinc-900 border-slate-100 dark:border-zinc-800 shadow-sm">
             <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-2">Total Users</p>
             <p className="text-3xl font-display font-bold text-slate-900 dark:text-white">{allUsers.length + 1}</p>
+          </Card>
+          <Card className="p-6 text-center bg-white dark:bg-zinc-900 border-slate-100 dark:border-zinc-800 shadow-sm">
+            <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-2">System Balance</p>
+            <p className="text-3xl font-display font-bold text-emerald-600">${totalBalance.toLocaleString()}</p>
+          </Card>
+          <Card className="p-6 text-center bg-white dark:bg-zinc-900 border-slate-100 dark:border-zinc-800 shadow-sm">
+            <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-2">Total Deposits</p>
+            <p className="text-3xl font-display font-bold text-blue-600">${totalDeposits.toLocaleString()}</p>
+          </Card>
+          <Card className="p-6 text-center bg-white dark:bg-zinc-900 border-slate-100 dark:border-zinc-800 shadow-sm">
+            <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-2">Total Withdrawals</p>
+            <p className="text-3xl font-display font-bold text-red-600">${totalWithdrawals.toLocaleString()}</p>
+          </Card>
+        </div>
+
+        <div className="grid grid-cols-2 gap-4">
+          <Card className="p-6 text-center bg-white dark:bg-zinc-900 border-slate-100 dark:border-zinc-800 shadow-sm">
+            <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-2">Pending Trans.</p>
+            <p className="text-3xl font-display font-bold text-orange-500">{pendingTxsCount}</p>
           </Card>
           <Card className="p-6 text-center bg-white dark:bg-zinc-900 border-slate-100 dark:border-zinc-800 shadow-sm">
             <p className="text-[10px] text-slate-500 uppercase tracking-widest font-bold mb-2">System Status</p>
@@ -2355,7 +2397,7 @@ export default function App() {
                         className="text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 h-8 w-8 p-0"
                         onClick={async () => {
                           if (confirm(`Delete user ${u?.displayName}?`)) {
-                            await axios.delete(`/api/admin/user/${u?.uid}`);
+                            await axios.delete(`/api/admin/user/${u?.uid}`, getAdminHeaders());
                             fetchData(user!.uid);
                           }
                         }}
@@ -2636,7 +2678,7 @@ export default function App() {
                   className="w-full h-10 text-xs"
                   onClick={async () => {
                     try {
-                      await axios.post('/api/admin/payment-methods', newPaymentMethod);
+                      await axios.post('/api/admin/payment-methods', newPaymentMethod, getAdminHeaders());
                     } catch (err: any) {
                       if (!err.response || err.response.status === 404) {
                         const localPMs = JSON.parse(localStorage.getItem('nexus_local_payment_methods') || '[]');
@@ -2670,7 +2712,7 @@ export default function App() {
                     className="p-2 text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded-lg"
                     onClick={async () => {
                       try {
-                        await axios.delete(`/api/admin/payment-methods/${pm.id}`);
+                        await axios.delete(`/api/admin/payment-methods/${pm.id}`, getAdminHeaders());
                       } catch (err: any) {
                         if (!err.response || err.response.status === 404) {
                           const localPMs = JSON.parse(localStorage.getItem('nexus_local_payment_methods') || '[]');
