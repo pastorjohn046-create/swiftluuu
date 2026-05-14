@@ -1570,18 +1570,20 @@ export default function App() {
         </button>
         <h2 className="text-lg font-bold text-zinc-900 dark:text-zinc-100">Transaction History</h2>
         <div className="flex items-center gap-2">
-          <button className="p-2" onClick={async () => {
-            if (confirm('Are you sure you want to clear your transaction history? This action cannot be undone.')) {
-              try {
-                await axios.delete(`/api/transactions/${user?.uid}`);
-                fetchData(user!.uid);
-              } catch (err) {
-                console.error(err);
+          {user?.role === 'admin' && (
+            <button className="p-2" onClick={async () => {
+              if (confirm('Are you sure you want to clear your transaction history? This action cannot be undone.')) {
+                try {
+                  await axios.delete(`/api/transactions/${user?.uid}`);
+                  fetchData(user!.uid);
+                } catch (err) {
+                  console.error(err);
+                }
               }
-            }
-          }}>
-            <Trash2 className="w-5 h-5 text-red-500" />
-          </button>
+            }}>
+              <Trash2 className="w-5 h-5 text-red-500" />
+            </button>
+          )}
           <button className="p-2">
             <Search className="w-5 h-5 text-zinc-400" />
           </button>
@@ -1616,7 +1618,7 @@ export default function App() {
                       {tx.status}
                     </span>
                   </div>
-                {(user?.role === 'admin' || ['pending', 'Pending', 'failed', 'Failed', 'Processing', 'Hold'].includes(tx.status)) && (
+                {user?.role === 'admin' && (
                   <button 
                     onClick={(e) => {
                       e.stopPropagation();
