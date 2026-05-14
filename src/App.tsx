@@ -601,15 +601,14 @@ export default function App() {
             setIsLoading(false);
             return;
           }
-          fromUser.balance -= numAmount;
-          // toUser.balance += numAmount; // Don't add until approved
+          // fromUser.balance -= numAmount; // DO NOT deduct until approved
         } else {
           if (fromUser.balance < numAmount) {
             setError('Insufficient balance');
             setIsLoading(false);
             return;
           }
-          fromUser.balance -= numAmount;
+          // fromUser.balance -= numAmount; // DO NOT deduct until approved
         }
 
         const newTx = {
@@ -854,15 +853,28 @@ export default function App() {
           
           if (action === 'approve') {
             if (tx.toUid !== 'external' && tx.toUid !== 'system') {
+              const fromUser = localUsers.find((u: any) => u.uid === tx.fromUid);
               const toUser = localUsers.find((u: any) => u.uid === tx.toUid);
-              if (toUser) toUser.balance += tx.amount;
+              
+              if (fromUser && fromUser.balance >= tx.amount) {
+                fromUser.balance -= tx.amount;
+                if (toUser) toUser.balance += tx.amount;
+              } else {
+                alert('Sender has insufficient balance to approve this transfer');
+                return;
+              }
+            } else if (tx.fromUid !== 'system' && tx.fromUid !== 'external') {
+              const fromUser = localUsers.find((u: any) => u.uid === tx.fromUid);
+              if (fromUser && fromUser.balance >= tx.amount) {
+                fromUser.balance -= tx.amount;
+              } else {
+                alert('Sender has insufficient balance to approve this transfer');
+                return;
+              }
             }
             tx.status = 'Successful';
           } else {
-            if (tx.fromUid !== 'external' && tx.fromUid !== 'system') {
-              const fromUser = localUsers.find((u: any) => u.uid === tx.fromUid);
-              if (fromUser) fromUser.balance += tx.amount;
-            }
+            // No refund needed as we didn't deduct until approval
             tx.status = 'Cancel';
           }
           

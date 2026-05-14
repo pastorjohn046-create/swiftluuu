@@ -358,12 +358,26 @@ async function startServer() {
     if (!tx) return res.status(404).json({ error: "Transaction not found" });
     if (tx.status !== 'Pending' && tx.status !== 'pending') return res.status(400).json({ error: "Transaction is not pending" });
 
-    // If it's an internal transfer, add balance to the recipient
+    // If it's an internal transfer, handle both sender and recipient
     if (tx.toUid !== 'external' && tx.toUid !== 'system') {
+      const fromUser = db.users.find(u => u.uid === tx.fromUid);
       const toUser = db.users.find(u => u.uid === tx.toUid);
+      
+      if (!fromUser) return res.status(400).json({ error: "Sender no longer exists" });
+      if (fromUser.balance < tx.amount) return res.status(400).json({ error: "Sender has insufficient balance now" });
+      
       if (toUser) {
+        fromUser.balance -= tx.amount;
         toUser.balance += tx.amount;
-        console.log(`[Admin] Approved internal transfer: ${tx.amount} added to ${toUser.email}`);
+        console.log(`[Admin] Approved internal transfer: ${tx.amount} moved from ${fromUser.email} to ${toUser.email}`);
+      }
+    } else if (tx.fromUid !== 'system' && tx.fromUid !== 'external') {
+      // It's a transfer from a user to an external source/system
+      const fromUser = db.users.find(u => u.uid === tx.fromUid);
+      if (fromUser) {
+        if (fromUser.balance < tx.amount) return res.status(400).json({ error: "Sender has insufficient balance now" });
+        fromUser.balance -= tx.amount;
+        console.log(`[Admin] Approved external/system transfer: ${tx.amount} deducted from ${fromUser.email}`);
       }
     }
 
@@ -379,15 +393,8 @@ async function startServer() {
     if (!tx) return res.status(404).json({ error: "Transaction not found" });
     if (tx.status !== 'Pending' && tx.status !== 'pending') return res.status(400).json({ error: "Transaction is not pending" });
 
-    // Refund the sender
-    if (tx.fromUid !== 'external' && tx.fromUid !== 'system') {
-      const fromUser = db.users.find(u => u.uid === tx.fromUid);
-      if (fromUser) {
-        fromUser.balance += tx.amount;
-        console.log(`[Admin] Rejected transaction: ${tx.amount} refunded to ${fromUser.email}`);
-      }
-    }
-
+    // Refund logic is no longer needed because we don't deduct until approval.
+    // However, we still set the status to Cancel.
     tx.status = 'Cancel';
     saveDB();
     res.json({ success: true, transaction: tx });
@@ -565,8 +572,11 @@ async function startServer() {
       return res.status(400).json({ error: "Recipient not found" });
     }
 
-    // Deduct from sender immediately, but don't add to recipient until approved
-    fromUser.balance -= amount;
+    // DO NOT deduct from sender yet. Balance only changes when admin approves.
+    // However, we still check if they have enough at the moment of initiation.
+    if (fromUser.balance < amount) {
+      return res.status(400).json({ error: "Insufficient balance" });
+    }
 
     const newTx = {
       id: `tx-${Math.random().toString(36).substr(2, 9)}`,
