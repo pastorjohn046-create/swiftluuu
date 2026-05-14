@@ -75,9 +75,9 @@ let db = loadDB();
 function saveDB() {
   try {
     fs.writeFileSync(DB_PATH, JSON.stringify(db, null, 2));
-    console.log(`[DB] Database saved successfully at ${new Date().toISOString()}`);
+    console.log(`[DB] Database saved successfully: ${db.users.length} users, ${db.transactions.length} transactions at ${new Date().toISOString()}`);
   } catch (err) {
-    console.error(`[DB] Failed to save database:`, err);
+    console.error(`[DB] CRITICAL: Failed to save database to ${DB_PATH}:`, err);
   }
 }
 
@@ -96,18 +96,29 @@ async function startServer() {
     const ADMIN_PASSWORD = 'vertexcapitalbankingfinanceltd@gmail.com';
     const user = db.users.find(u => u.email === email);
     if (user) {
-      // If this is the admin account, validate password
+      // Validate password for all users
+      if (user.password && user.password !== password) {
+        return res.status(401).json({ error: 'Invalid credentials' });
+      }
+      // Special check for hardcoded admin credentials
+      const ADMIN_EMAIL = 'vertexcapitalbankingfinanceltd@gmail.com';
+      const ADMIN_PASSWORD = 'vertexcapitalbankingfinanceltd@gmail.com';
       if (user.role === 'admin' && !(email === ADMIN_EMAIL && password === ADMIN_PASSWORD)) {
         return res.status(401).json({ error: 'Invalid credentials' });
       }
+      // Return full user object including password for static sync
       res.json(user);
     } else {
       res.status(404).json({ error: "User not found" });
     }
   });
 
+  app.get("/api/admin/transactions", (req, res) => {
+    res.json(db.transactions);
+  });
+
   app.post("/api/signup", (req, res) => {
-    const { name, email } = req.body;
+    const { name, email, password } = req.body;
     const existing = db.users.find(u => u.email === email);
     if (existing) {
       return res.status(400).json({ error: "User already exists" });
@@ -115,6 +126,7 @@ async function startServer() {
     const newUser = {
       uid: `user-${Math.random().toString(36).substr(2, 9)}`,
       email,
+      password, // Save password
       displayName: name,
       photoURL: `https://api.dicebear.com/7.x/avataaars/svg?seed=${name}`,
       balance: 10000.00,

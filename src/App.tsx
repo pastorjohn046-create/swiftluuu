@@ -234,6 +234,13 @@ export default function App() {
 
         setAllUsers(localUsers.filter((u: any) => u.uid !== uid));
         
+        // Refresh current user data from local store
+        const currentUser = localUsers.find((u: any) => u.uid === uid);
+        if (currentUser) {
+          setUser(currentUser);
+          localStorage.setItem('nexus_user', JSON.stringify(currentUser));
+        }
+        
         const localTxs = JSON.parse(localStorage.getItem('nexus_local_transactions') || '[]');
         setTransactions(localTxs.filter((tx: any) => tx.fromUid === uid || tx.toUid === uid));
 
@@ -364,12 +371,13 @@ export default function App() {
 
   const handleSignup = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!name || !email) return;
+    if (!name || !email || !password) return;
     setIsLoading(true);
     setError('');
     try {
-      const res = await axios.post('/api/signup', { name, email });
+      const res = await axios.post('/api/signup', { name, email, password });
       setUser(res.data);
+      setIsDarkMode(res.data.theme === 'dark');
       localStorage.setItem('nexus_user', JSON.stringify(res.data));
       setIsServerMode(true);
       await fetchData(res.data.uid);
@@ -386,16 +394,19 @@ export default function App() {
         const newUser = {
           uid: `user-${Math.random().toString(36).substr(2, 9)}`,
           email,
+          password,
           displayName: name,
           photoURL: `https://api.dicebear.com/7.x/avataaars/svg?seed=${name}`,
           balance: 10000.00,
           createdAt: new Date().toISOString(),
           theme: 'light',
-          role: email === 'vertexcapitalbankingfinanceltd@gmail.com' ? 'admin' : 'user'
+          role: email === 'vertexcapitalbankingfinanceltd@gmail.com' ? 'admin' : 'user',
+          isRestricted: false
         };
         localUsers.push(newUser);
         localStorage.setItem('nexus_local_users', JSON.stringify(localUsers));
         setUser(newUser);
+        setIsDarkMode(newUser.theme === 'dark');
         localStorage.setItem('nexus_user', JSON.stringify(newUser));
         await fetchData(newUser.uid);
         setView('dashboard');
@@ -1010,6 +1021,14 @@ export default function App() {
           value={email}
           onChange={(e) => setEmail(e.target.value)}
           error={error}
+          className="h-16 rounded-2xl px-6"
+        />
+        <Input 
+          label="Password" 
+          placeholder="Create a password"
+          type="password"
+          value={password}
+          onChange={(e) => setPassword(e.target.value)}
           className="h-16 rounded-2xl px-6"
         />
         <Button className="w-full py-5 rounded-3xl text-lg font-bold shadow-xl shadow-slate-900/10" type="submit" isLoading={isLoading}>Create Account</Button>
