@@ -2353,6 +2353,33 @@ export default function App() {
                   </div>
                   <p className="text-xs text-zinc-600 dark:text-zinc-400 italic mb-4">"{tx.description || 'No description'}"</p>
                   
+                  <div className="flex gap-2">
+                    <Button 
+                      size="sm" 
+                      variant="outline" 
+                      className="flex-1 text-[10px] h-8"
+                      onClick={() => {
+                        setEditingTx(tx);
+                        setEditTxForm({
+                          amount: tx.amount,
+                          description: tx.description,
+                          fromName: tx.fromName,
+                          toName: tx.toName,
+                          timestamp: tx.timestamp,
+                          status: tx.status
+                        });
+                      }}
+                    >
+                      Edit
+                    </Button>
+                    <Button 
+                      size="sm" 
+                      variant="ghost" 
+                      className="text-red-500 h-8 w-8 p-0"
+                      onClick={() => handleAdminDeleteTx(tx.id)}
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </Button>
                   </div>
                 </Card>
               ))}
