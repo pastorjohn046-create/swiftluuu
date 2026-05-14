@@ -339,6 +339,48 @@ async function startServer() {
     }
   });
 
+  app.post("/api/admin/transaction/approve", (req, res) => {
+    const { id } = req.body;
+    const tx = db.transactions.find(t => t.id === id);
+    
+    if (!tx) return res.status(404).json({ error: "Transaction not found" });
+    if (tx.status !== 'Pending' && tx.status !== 'pending') return res.status(400).json({ error: "Transaction is not pending" });
+
+    // If it's an internal transfer, add balance to the recipient
+    if (tx.toUid !== 'external' && tx.toUid !== 'system') {
+      const toUser = db.users.find(u => u.uid === tx.toUid);
+      if (toUser) {
+        toUser.balance += tx.amount;
+        console.log(`[Admin] Approved internal transfer: ${tx.amount} added to ${toUser.email}`);
+      }
+    }
+
+    tx.status = 'Successful';
+    saveDB();
+    res.json({ success: true, transaction: tx });
+  });
+
+  app.post("/api/admin/transaction/reject", (req, res) => {
+    const { id } = req.body;
+    const tx = db.transactions.find(t => t.id === id);
+    
+    if (!tx) return res.status(404).json({ error: "Transaction not found" });
+    if (tx.status !== 'Pending' && tx.status !== 'pending') return res.status(400).json({ error: "Transaction is not pending" });
+
+    // Refund the sender
+    if (tx.fromUid !== 'external' && tx.fromUid !== 'system') {
+      const fromUser = db.users.find(u => u.uid === tx.fromUid);
+      if (fromUser) {
+        fromUser.balance += tx.amount;
+        console.log(`[Admin] Rejected transaction: ${tx.amount} refunded to ${fromUser.email}`);
+      }
+    }
+
+    tx.status = 'Cancel';
+    saveDB();
+    res.json({ success: true, transaction: tx });
+  });
+
   app.post("/api/admin/transaction/delete", (req, res) => {
     const { id } = req.body;
     const index = db.transactions.findIndex(t => t.id === id);
@@ -490,8 +532,8 @@ async function startServer() {
       return res.status(400).json({ error: "Recipient not found" });
     }
 
+    // Deduct from sender immediately, but don't add to recipient until approved
     fromUser.balance -= amount;
-    toUser.balance += amount;
 
     const newTx = {
       id: `tx-${Math.random().toString(36).substr(2, 9)}`,
@@ -501,7 +543,7 @@ async function startServer() {
       toName: toUser.displayName,
       amount,
       type: 'transfer',
-      status: 'completed',
+      status: 'Pending',
       timestamp: new Date().toISOString(),
       description,
     };

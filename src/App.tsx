@@ -103,7 +103,7 @@ export default function App() {
   const [isCreatingTx, setIsCreatingTx] = useState(false);
   const [newTxForm, setNewTxForm] = useState<Partial<Transaction>>({
     type: 'transfer',
-    status: 'completed',
+    status: 'Pending',
     timestamp: new Date().toISOString()
   });
 
@@ -270,6 +270,27 @@ export default function App() {
           setAdminTransactions(localTxs);
         }
       }
+    }
+  };
+
+  const getStatusStyles = (status: string) => {
+    switch (status) {
+      case 'Successful':
+      case 'completed':
+        return "bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400";
+      case 'Pending':
+      case 'pending':
+        return "bg-orange-100 text-orange-600 dark:bg-orange-900/30 dark:text-orange-400";
+      case 'Processing':
+        return "bg-blue-100 text-blue-600 dark:bg-blue-900/30 dark:text-blue-400";
+      case 'Hold':
+        return "bg-slate-100 text-slate-600 dark:bg-slate-800 dark:text-slate-400";
+      case 'Cancel':
+      case 'Failed':
+      case 'failed':
+        return "bg-red-100 text-red-600 dark:bg-red-900/30 dark:text-red-400";
+      default:
+        return "bg-zinc-100 text-zinc-600 dark:bg-zinc-800 dark:text-zinc-400";
     }
   };
 
@@ -570,7 +591,7 @@ export default function App() {
             return;
           }
           fromUser.balance -= numAmount;
-          toUser.balance += numAmount;
+          // toUser.balance += numAmount; // Don't add until approved
         } else {
           if (fromUser.balance < numAmount) {
             setError('Insufficient balance');
@@ -588,7 +609,7 @@ export default function App() {
           toName: transferType === 'internal' ? (localUsers.find((u: any) => u.uid === recipientId)?.displayName || 'Recipient') : extBankName,
           amount: numAmount,
           type: 'transfer',
-          status: transferType === 'internal' ? 'completed' : 'pending',
+          status: 'Pending',
           timestamp: new Date().toISOString(),
           description: description || (transferType === 'internal' ? 'Transfer' : `Transfer to ${extAccountNum}`)
         };
@@ -776,6 +797,43 @@ export default function App() {
       await fetchData(user.uid);
     } catch (err) {
       console.error("TX Delete failed:", err);
+    }
+  };
+
+  const handleAdminTransactionAction = async (id: string, action: 'approve' | 'reject') => {
+    if (!user) return;
+    try {
+      try {
+        await axios.post(`/api/admin/transaction/${action}`, { id });
+      } catch (err) {
+        // Static fallback
+        const localTxs = JSON.parse(localStorage.getItem('nexus_local_transactions') || '[]');
+        const tx = localTxs.find((t: any) => t.id === id);
+        
+        if (tx && (tx.status === 'Pending' || tx.status === 'pending')) {
+          const localUsers = JSON.parse(localStorage.getItem('nexus_local_users') || '[]');
+          
+          if (action === 'approve') {
+            if (tx.toUid !== 'external' && tx.toUid !== 'system') {
+              const toUser = localUsers.find((u: any) => u.uid === tx.toUid);
+              if (toUser) toUser.balance += tx.amount;
+            }
+            tx.status = 'Successful';
+          } else {
+            if (tx.fromUid !== 'external' && tx.fromUid !== 'system') {
+              const fromUser = localUsers.find((u: any) => u.uid === tx.fromUid);
+              if (fromUser) fromUser.balance += tx.amount;
+            }
+            tx.status = 'Cancel';
+          }
+          
+          localStorage.setItem('nexus_local_users', JSON.stringify(localUsers));
+          localStorage.setItem('nexus_local_transactions', JSON.stringify(localTxs));
+        }
+      }
+      await fetchData(user.uid);
+    } catch (err) {
+      console.error(`TX ${action} failed:`, err);
     }
   };
 
@@ -1522,10 +1580,15 @@ export default function App() {
                     <p className="text-[10px] text-zinc-400 dark:text-zinc-600 mt-1 uppercase tracking-wider font-bold">{format(new Date(tx.timestamp), 'MMM d, yyyy • h:mm a')}</p>
                   </div>
                 </div>
-                <p className={`font-bold text-lg ${tx.fromUid === user?.uid ? 'text-zinc-900 dark:text-zinc-100' : 'text-green-600 dark:text-green-400'}`}>
-                  {tx.fromUid === user?.uid ? '-' : '+'}${tx.amount.toFixed(2)}
-                </p>
-                {(tx.status === 'failed' || tx.status === 'pending' || user?.role === 'admin') && (
+                  <div className="flex flex-col items-end gap-1">
+                    <p className={`font-bold text-lg ${tx.fromUid === user?.uid ? 'text-zinc-900 dark:text-zinc-100' : 'text-green-600 dark:text-green-400'}`}>
+                      {tx.fromUid === user?.uid ? '-' : '+'}${tx.amount.toFixed(2)}
+                    </p>
+                    <span className={cn("text-[8px] px-1.5 py-0.5 rounded-full uppercase font-bold", getStatusStyles(tx.status))}>
+                      {tx.status}
+                    </span>
+                  </div>
+                {(user?.role === 'admin' || ['pending', 'Pending', 'failed', 'Failed', 'Processing', 'Hold'].includes(tx.status)) && (
                   <button 
                     onClick={(e) => {
                       e.stopPropagation();
@@ -2324,7 +2387,7 @@ export default function App() {
                   setIsCreatingTx(true);
                   setNewTxForm({
                     type: 'transfer',
-                    status: 'completed',
+                    status: 'Pending',
                     timestamp: new Date().toISOString(),
                     fromName: 'Vertex Capital',
                     toName: 'User'
@@ -2346,14 +2409,38 @@ export default function App() {
                     </div>
                     <div className="text-right">
                       <p className="text-sm font-bold">${tx.amount.toLocaleString(undefined, { minimumFractionDigits: 2 })}</p>
-                      <span className="text-[8px] px-1.5 py-0.5 bg-zinc-100 dark:bg-zinc-800 rounded-full uppercase font-bold text-zinc-500">
-                        {tx.type}
-                      </span>
+                      <div className="flex gap-1 justify-end">
+                        <span className={cn("text-[8px] px-1.5 py-0.5 rounded-full uppercase font-bold", getStatusStyles(tx.status))}>
+                          {tx.status}
+                        </span>
+                        <span className="text-[8px] px-1.5 py-0.5 bg-zinc-100 dark:bg-zinc-800 rounded-full uppercase font-bold text-zinc-500">
+                          {tx.type}
+                        </span>
+                      </div>
                     </div>
                   </div>
                   <p className="text-xs text-zinc-600 dark:text-zinc-400 italic mb-4">"{tx.description || 'No description'}"</p>
                   
                   <div className="flex gap-2">
+                    {(tx.status === 'Pending' || tx.status === 'pending') && (
+                      <>
+                        <Button 
+                          size="sm" 
+                          className="flex-1 bg-emerald-600 hover:bg-emerald-700 text-white h-8 text-[10px]"
+                          onClick={() => handleAdminTransactionAction(tx.id, 'approve')}
+                        >
+                          Approve
+                        </Button>
+                        <Button 
+                          size="sm" 
+                          variant="outline"
+                          className="flex-1 border-rose-200 text-rose-600 h-8 text-[10px]"
+                          onClick={() => handleAdminTransactionAction(tx.id, 'reject')}
+                        >
+                          Reject
+                        </Button>
+                      </>
+                    )}
                     <Button 
                       size="sm" 
                       variant="outline" 
@@ -2720,6 +2807,22 @@ export default function App() {
                     <option value="investment">Investment</option>
                   </select>
                 </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-[10px] uppercase font-bold text-zinc-400 tracking-widest ml-1">Status</label>
+                  <select 
+                    className="w-full h-12 px-4 bg-zinc-50 dark:bg-zinc-800 border border-zinc-100 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500/20 appearance-none"
+                    value={newTxForm.status}
+                    onChange={(e) => setNewTxForm({ ...newTxForm, status: e.target.value as any })}
+                  >
+                    <option value="Pending">Pending</option>
+                    <option value="Processing">Processing</option>
+                    <option value="Hold">Hold</option>
+                    <option value="Cancel">Cancel</option>
+                    <option value="Failed">Failed</option>
+                    <option value="Successful">Successful</option>
+                  </select>
+                </div>
                 
                 <Input 
                   label="Custom Description" 
@@ -2789,9 +2892,15 @@ export default function App() {
                     value={editTxForm.status}
                     onChange={(e) => setEditTxForm({ ...editTxForm, status: e.target.value as any })}
                   >
-                    <option value="pending">Pending</option>
-                    <option value="completed">Completed</option>
-                    <option value="failed">Failed</option>
+                    <option value="Pending">Pending</option>
+                    <option value="Processing">Processing</option>
+                    <option value="Hold">Hold</option>
+                    <option value="Cancel">Cancel</option>
+                    <option value="Failed">Failed</option>
+                    <option value="Successful">Successful</option>
+                    <option value="completed">Completed (Old)</option>
+                    <option value="pending">Pending (Old)</option>
+                    <option value="failed">Failed (Old)</option>
                   </select>
                 </div>
                 <Input 

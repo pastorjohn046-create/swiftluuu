@@ -11,7 +11,7 @@ export interface UserProfile {
 }
 
 export type TransactionType = 'transfer' | 'deposit' | 'withdrawal';
-export type TransactionStatus = 'completed' | 'pending' | 'failed';
+export type TransactionStatus = 'Pending' | 'Processing' | 'Hold' | 'Cancel' | 'Failed' | 'Successful' | 'completed' | 'pending' | 'failed';
 
 export interface Transaction {
   id: string;
