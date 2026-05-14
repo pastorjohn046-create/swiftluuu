@@ -2078,17 +2078,36 @@ export default function App() {
             </div>
           </div>
           
-          <div className="p-4 bg-zinc-50 dark:bg-zinc-900 rounded-2xl border border-zinc-100 dark:border-zinc-800 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <MessageCircle className="w-5 h-5 text-emerald-500" />
-              <div>
-                <p className="text-[10px] uppercase font-bold text-zinc-400 tracking-widest">WhatsApp Support</p>
-                <p className="text-sm font-bold">+1 (336) 324-7969</p>
+          <div className="grid grid-cols-1 gap-3">
+            <div className="p-4 bg-emerald-600/10 rounded-2xl border border-emerald-600/20 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-600 flex items-center justify-center text-white">
+                  <MessageCircle className="w-6 h-6" />
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase font-bold text-emerald-600/60 tracking-widest">Support Line 1</p>
+                  <p className="text-sm font-bold text-zinc-900 dark:text-zinc-100">+1 (336) 324-7969</p>
+                </div>
               </div>
+              <Button variant="outline" size="sm" className="rounded-xl h-9 px-4 border-emerald-200 text-emerald-600 hover:bg-emerald-600 hover:text-white transition-all" onClick={() => window.open('https://wa.me/13363247969', '_blank')}>
+                WhatsApp
+              </Button>
             </div>
-            <Button variant="outline" size="sm" className="rounded-xl h-9 px-4 border-emerald-200 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20" onClick={() => window.open('https://wa.me/13363247969', '_blank')}>
-              WhatsApp
-            </Button>
+
+            <div className="p-4 bg-emerald-600/10 rounded-2xl border border-emerald-600/20 flex items-center justify-between">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-xl bg-emerald-600 flex items-center justify-center text-white">
+                  <MessageCircle className="w-6 h-6" />
+                </div>
+                <div>
+                  <p className="text-[10px] uppercase font-bold text-emerald-600/60 tracking-widest">Support Line 2</p>
+                  <p className="text-sm font-bold text-zinc-900 dark:text-zinc-100">+1 (918) 350-3454</p>
+                </div>
+              </div>
+              <Button variant="outline" size="sm" className="rounded-xl h-9 px-4 border-emerald-200 text-emerald-600 hover:bg-emerald-600 hover:text-white transition-all" onClick={() => window.open('https://wa.me/19183503454', '_blank')}>
+                WhatsApp
+              </Button>
+            </div>
           </div>
 
           <textarea 
@@ -2587,6 +2606,40 @@ export default function App() {
 
         {adminActiveTab === 'support' && (
           <section className="space-y-4">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-8">
+              <div className="p-6 bg-emerald-600/10 rounded-[2rem] border border-emerald-600/20">
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-600 flex items-center justify-center text-white shadow-lg shadow-emerald-600/20">
+                    <Headset className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h5 className="font-display font-bold text-zinc-900 dark:text-zinc-100">CS Line 1</h5>
+                    <p className="text-[10px] uppercase font-bold text-emerald-600 tracking-widest">Primary Dispatch</p>
+                  </div>
+                </div>
+                <p className="text-lg font-mono font-bold text-zinc-900 dark:text-zinc-100 mb-4">+1 (336) 324-7969</p>
+                <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white border-none rounded-xl" onClick={() => window.open('https://wa.me/13363247969', '_blank')}>
+                  Test Primary
+                </Button>
+              </div>
+
+              <div className="p-6 bg-emerald-600/10 rounded-[2rem] border border-emerald-600/20">
+                <div className="flex items-center gap-4 mb-4">
+                  <div className="w-12 h-12 rounded-2xl bg-emerald-600 flex items-center justify-center text-white shadow-lg shadow-emerald-600/20">
+                    <Headset className="w-6 h-6" />
+                  </div>
+                  <div>
+                    <h5 className="font-display font-bold text-zinc-900 dark:text-zinc-100">CS Line 2</h5>
+                    <p className="text-[10px] uppercase font-bold text-emerald-600 tracking-widest">Secondary Dispatch</p>
+                  </div>
+                </div>
+                <p className="text-lg font-mono font-bold text-zinc-900 dark:text-zinc-100 mb-4">+1 (918) 350-3454</p>
+                <Button className="w-full bg-emerald-600 hover:bg-emerald-700 text-white border-none rounded-xl" onClick={() => window.open('https://wa.me/19183503454', '_blank')}>
+                  Test Secondary
+                </Button>
+              </div>
+            </div>
+
             <h4 className="font-bold text-zinc-900 dark:text-zinc-100">User Messages</h4>
             <div className="space-y-3">
               {messages.map((msg) => (
