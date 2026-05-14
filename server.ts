@@ -396,18 +396,39 @@ async function startServer() {
   app.post("/api/admin/transaction/create", (req, res) => {
     const { fromUid, toUid, amount, type, description, timestamp, fromName, toName, status } = req.body;
     
+    const numAmount = parseFloat(amount);
+    const finalStatus = status || 'completed';
+
     const newTx = {
       id: `tx-man-${Math.random().toString(36).substr(2, 9)}`,
       fromUid: fromUid || 'system',
       toUid: toUid || 'external',
       fromName: fromName || 'System',
       toName: toName || 'User',
-      amount: parseFloat(amount),
+      amount: numAmount,
       type: type || 'transfer',
-      status: status || 'completed',
+      status: finalStatus,
       timestamp: timestamp || new Date().toISOString(),
       description: description || 'Manual Transaction'
     };
+
+    // Update balances if Successful/completed
+    if (finalStatus === 'Successful' || finalStatus === 'completed') {
+      if (newTx.fromUid !== 'system' && newTx.fromUid !== 'external') {
+        const fromUser = db.users.find(u => u.uid === newTx.fromUid);
+        if (fromUser) fromUser.balance -= numAmount;
+      }
+      if (newTx.toUid !== 'system' && newTx.toUid !== 'external') {
+        const toUser = db.users.find(u => u.uid === newTx.toUid);
+        if (toUser) toUser.balance += numAmount;
+      }
+    } else if (finalStatus === 'Pending' || finalStatus === 'pending' || finalStatus === 'Processing' || finalStatus === 'Hold') {
+      // For pending/processing, we still deduct from sender to prevent double spending
+      if (newTx.fromUid !== 'system' && newTx.fromUid !== 'external') {
+        const fromUser = db.users.find(u => u.uid === newTx.fromUid);
+        if (fromUser) fromUser.balance -= numAmount;
+      }
+    }
 
     db.transactions.unshift(newTx);
     saveDB();

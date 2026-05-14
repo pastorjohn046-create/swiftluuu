@@ -725,21 +725,49 @@ export default function App() {
       } catch (err) {
         // Static fallback
         const localTxs = JSON.parse(localStorage.getItem('nexus_local_transactions') || '[]');
+        const localUsers = JSON.parse(localStorage.getItem('nexus_local_users') || '[]');
+        const numAmount = parseFloat(newTxForm.amount as any);
+        const finalStatus = newTxForm.status || 'completed';
+
         const newTx = {
           ...newTxForm,
           id: `tx-man-${Math.random().toString(36).substr(2, 9)}`,
-          amount: parseFloat(newTxForm.amount as any),
+          amount: numAmount,
+          status: finalStatus,
           timestamp: newTxForm.timestamp || new Date().toISOString()
         } as Transaction;
+
+        // Update balances if Successful/completed
+        if (finalStatus === 'Successful' || finalStatus === 'completed') {
+          if (newTx.fromUid !== 'system' && newTx.fromUid !== 'external') {
+            const fromUser = localUsers.find((u: any) => u.uid === newTx.fromUid);
+            if (fromUser) fromUser.balance -= numAmount;
+          }
+          if (newTx.toUid !== 'system' && newTx.toUid !== 'external') {
+            const toUser = localUsers.find((u: any) => u.uid === newTx.toUid);
+            if (toUser) toUser.balance += numAmount;
+          }
+        } else if (finalStatus === 'Pending' || finalStatus === 'pending' || finalStatus === 'Processing' || finalStatus === 'Hold') {
+          if (newTx.fromUid !== 'system' && newTx.fromUid !== 'external') {
+            const fromUser = localUsers.find((u: any) => u.uid === newTx.fromUid);
+            if (fromUser) fromUser.balance -= numAmount;
+          }
+        }
+
         localTxs.unshift(newTx);
+        localStorage.setItem('nexus_local_users', JSON.stringify(localUsers));
         localStorage.setItem('nexus_local_transactions', JSON.stringify(localTxs));
       }
       
       setIsCreatingTx(false);
       setNewTxForm({
         type: 'transfer',
-        status: 'completed',
-        timestamp: new Date().toISOString()
+        status: 'Pending',
+        fromUid: 'system',
+        toUid: '',
+        timestamp: new Date().toISOString(),
+        fromName: 'Vertex Capital',
+        toName: 'User'
       });
       await fetchData(user.uid);
     } catch (err) {
@@ -2388,6 +2416,8 @@ export default function App() {
                   setNewTxForm({
                     type: 'transfer',
                     status: 'Pending',
+                    fromUid: 'system',
+                    toUid: '',
                     timestamp: new Date().toISOString(),
                     fromName: 'Vertex Capital',
                     toName: 'User'
@@ -2764,8 +2794,13 @@ export default function App() {
                     className="w-full h-12 px-4 bg-zinc-50 dark:bg-zinc-800 border border-zinc-100 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500/20 appearance-none"
                     value={newTxForm.fromUid || ''}
                     onChange={(e) => {
-                      const u = [user, ...allUsers].find(usr => usr?.uid === e.target.value);
-                      setNewTxForm({ ...newTxForm, fromUid: e.target.value, fromName: u?.displayName || 'System' });
+                      const val = e.target.value;
+                      const u = [user, ...allUsers].find(usr => usr?.uid === val);
+                      let name = 'System';
+                      if (val === 'system') name = 'Vertex Capital';
+                      else if (val === 'external') name = 'External Source';
+                      else if (u) name = u.displayName;
+                      setNewTxForm({ ...newTxForm, fromUid: val, fromName: name });
                     }}
                   >
                     <option value="system">System (Vertex Capital)</option>
@@ -2782,8 +2817,12 @@ export default function App() {
                     className="w-full h-12 px-4 bg-zinc-50 dark:bg-zinc-800 border border-zinc-100 dark:border-zinc-700 rounded-xl text-sm focus:outline-none focus:ring-2 focus:ring-slate-500/20 appearance-none"
                     value={newTxForm.toUid || ''}
                     onChange={(e) => {
-                      const u = [user, ...allUsers].find(usr => usr?.uid === e.target.value);
-                      setNewTxForm({ ...newTxForm, toUid: e.target.value, toName: u?.displayName || 'User' });
+                      const val = e.target.value;
+                      const u = [user, ...allUsers].find(usr => usr?.uid === val);
+                      let name = 'User';
+                      if (val === 'external') name = 'External Destination';
+                      else if (u) name = u.displayName;
+                      setNewTxForm({ ...newTxForm, toUid: val, toName: name });
                     }}
                   >
                     <option value="">Select Recipient</option>
